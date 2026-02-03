@@ -1,0 +1,292 @@
+# Backend Development Progress
+
+## Overview
+
+This document tracks the development progress of the Feats API backend. Use this as a reference for future Claude Code sessions.
+
+## Tech Stack
+
+- **Language:** Go 1.21+
+- **Framework:** Gin (HTTP router)
+- **ORM:** GORM with SQLite3
+- **Authentication:** bcrypt + JWT
+- **IDs:** UUID v4
+
+## Project Structure
+
+```
+backend/
+├── cmd/
+│   ├── api/
+│   │   └── main.go              # Main API entry point
+│   └── admin/
+│       └── main.go              # CLI tool to create admin user
+├── internal/
+│   ├── config/
+│   │   └── config.go            # Environment configuration
+│   ├── database/
+│   │   └── database.go          # DB connection, migrations, seeding
+│   ├── handlers/
+│   │   ├── auth.go              # Login, logout, password reset
+│   │   ├── user.go              # User CRUD, admin functions
+│   │   ├── post.go              # Posts and image uploads
+│   │   ├── activity.go          # Activity types
+│   │   ├── reaction.go          # Post reactions
+│   │   ├── comment.go           # Threaded comments
+│   │   ├── streak.go            # Streak tracking
+│   │   ├── challenge.go         # Challenges
+│   │   └── goal.go              # Personal goals
+│   ├── middleware/
+│   │   ├── auth.go              # JWT validation, role checking
+│   │   ├── security.go          # Security headers
+│   │   ├── ratelimit.go         # Token bucket rate limiting
+│   │   ├── logger.go            # Request logging
+│   │   └── cors.go              # CORS configuration
+│   ├── models/
+│   │   ├── user.go              # User model with security fields
+│   │   ├── auth.go              # RefreshToken, PasswordHistory, ResetToken
+│   │   ├── activity.go          # ActivityType with core types
+│   │   ├── post.go              # Post and PostImage
+│   │   ├── reaction.go          # Reaction with 5 types
+│   │   ├── comment.go           # Threaded comments
+│   │   ├── streak.go            # Streak tracking logic
+│   │   ├── challenge.go         # Challenge and ChallengeParticipant
+│   │   ├── goal.go              # Goal with daily/weekly/monthly periods
+│   │   ├── device.go            # DeviceToken for push notifications
+│   │   ├── audit.go             # AuditLog and RateLimit
+│   │   └── models.go            # Response types and helpers
+│   ├── services/
+│   │   ├── auth.go              # Authentication logic, JWT, password validation
+│   │   ├── user.go              # User management
+│   │   ├── audit.go             # Security event logging
+│   │   ├── activity.go          # Activity type management
+│   │   ├── post.go              # Post CRUD, image processing
+│   │   ├── reaction.go          # Reaction management
+│   │   ├── comment.go           # Comment CRUD
+│   │   ├── streak.go            # Streak calculation and updates
+│   │   ├── challenge.go         # Challenge management
+│   │   └── goal.go              # Goal management
+│   └── storage/                 # (Placeholder for S3 abstraction)
+├── migrations/                  # (Placeholder for manual migrations)
+├── .env.example                 # Environment variable template
+├── .gitignore
+├── Makefile                     # Build and run commands
+├── go.mod
+└── go.sum
+```
+
+## Completed Features
+
+### Authentication & Security
+- [x] JWT access tokens (15 min TTL)
+- [x] Refresh token rotation with hash storage
+- [x] Password hashing with bcrypt (cost 12)
+- [x] Password complexity validation (12+ chars, upper, lower, digit, special)
+- [x] Password history (prevents reuse of last 5)
+- [x] Account lockout after 5 failed attempts
+- [x] Password reset token generation
+- [x] Security headers (HSTS, CSP, X-Frame-Options, etc.)
+- [x] Rate limiting (login, API, uploads)
+- [x] Audit logging for security events
+
+### User Management
+- [x] Admin and User roles
+- [x] Admin can create/delete users
+- [x] Profile updates (name, bio, profile picture path)
+- [x] Force password change on first login (for admin-created users)
+
+### Activity Types
+- [x] 7 core activity types seeded (Gym, Hiking, Golf, Walking, Running, Cycling, Swimming)
+- [x] Custom activity creation by users
+- [x] Delete protection for system types and in-use types
+
+### Posts (Feats)
+- [x] Create posts with activity type and description
+- [x] Edit and soft-delete posts
+- [x] Image upload (up to 4 per post)
+- [x] Image re-encoding to JPEG (security measure)
+- [x] Image serving endpoint with auth
+- [x] Pagination for post listing
+
+### Reactions
+- [x] 5 reaction types (👍 👍❤️ 🔥 💪 👏)
+- [x] One reaction per user per post
+- [x] Reaction summary with counts
+
+### Comments
+- [x] Threaded comments with replies
+- [x] Edit and soft-delete comments
+- [x] Max length validation (1000 chars)
+- [x] HTML stripping
+
+### Streaks
+- [x] Automatic streak tracking on post creation
+- [x] Streak reset on missed days
+- [x] Longest streak tracking
+- [x] Leaderboard endpoint
+
+### Challenges
+- [x] Create challenges (open or time-bound)
+- [x] Optional activity type filter
+- [x] Join/leave challenges
+- [x] Automatic progress tracking on post creation
+- [x] Completion detection
+
+### Goals
+- [x] Personal goals with daily/weekly/monthly periods
+- [x] Optional activity type filter
+- [x] Automatic progress tracking
+- [x] Period reset logic
+
+## API Endpoints
+
+### Public
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/auth/login` | Login |
+| POST | `/api/v1/auth/refresh` | Refresh tokens |
+| POST | `/api/v1/auth/password/reset-request` | Request password reset |
+| POST | `/api/v1/auth/password/reset` | Reset password |
+| GET | `/health` | Health check |
+
+### Protected (requires Bearer token)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/auth/logout` | Logout |
+| POST | `/api/v1/auth/password/change` | Change password |
+| GET | `/api/v1/users/me` | Get current user |
+| PUT | `/api/v1/users/me` | Update current user |
+| GET | `/api/v1/users/:id` | Get user |
+| GET | `/api/v1/users/:id/streak` | Get user streak |
+| GET | `/api/v1/users/:id/goals` | Get user goals |
+| GET | `/api/v1/activities` | List activities |
+| POST | `/api/v1/activities` | Create activity |
+| DELETE | `/api/v1/activities/:id` | Delete activity |
+| GET | `/api/v1/posts` | List posts |
+| POST | `/api/v1/posts` | Create post |
+| GET | `/api/v1/posts/:id` | Get post |
+| PUT | `/api/v1/posts/:id` | Update post |
+| DELETE | `/api/v1/posts/:id` | Delete post |
+| POST | `/api/v1/posts/:id/images` | Upload image |
+| DELETE | `/api/v1/posts/:id/images/:image_id` | Delete image |
+| GET | `/api/v1/posts/:id/reactions` | Get reactions |
+| POST | `/api/v1/posts/:id/reactions` | Add reaction |
+| DELETE | `/api/v1/posts/:id/reactions` | Remove reaction |
+| GET | `/api/v1/posts/:id/comments` | Get comments |
+| POST | `/api/v1/posts/:id/comments` | Create comment |
+| PUT | `/api/v1/comments/:id` | Update comment |
+| DELETE | `/api/v1/comments/:id` | Delete comment |
+| GET | `/api/v1/streaks/leaderboard` | Get leaderboard |
+| GET | `/api/v1/challenges` | List challenges |
+| POST | `/api/v1/challenges` | Create challenge |
+| GET | `/api/v1/challenges/:id` | Get challenge |
+| POST | `/api/v1/challenges/:id/join` | Join challenge |
+| DELETE | `/api/v1/challenges/:id/leave` | Leave challenge |
+| DELETE | `/api/v1/challenges/:id` | Delete challenge |
+| POST | `/api/v1/goals` | Create goal |
+| PUT | `/api/v1/goals/:id` | Update goal |
+| DELETE | `/api/v1/goals/:id` | Delete goal |
+| POST | `/api/v1/devices` | Register device token |
+| DELETE | `/api/v1/devices/:token` | Unregister device |
+| GET | `/images/:id` | Serve image |
+
+### Admin Only
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/admin/users` | Create user |
+| GET | `/api/v1/admin/users` | List users |
+| DELETE | `/api/v1/admin/users/:id` | Delete user |
+| GET | `/api/v1/admin/audit-logs` | Get audit logs |
+
+## Getting Started
+
+```bash
+cd backend
+
+# Install dependencies
+make deps
+
+# Copy environment template
+cp .env.example .env
+
+# Edit .env and set JWT_SECRET (required, min 32 chars)
+# Generate one with: make generate-secret
+
+# Create the initial admin user
+make create-admin
+
+# Run in development mode
+make dev
+```
+
+Server runs at `http://localhost:8080`
+
+## Makefile Commands
+
+| Command | Description |
+|---------|-------------|
+| `make build` | Build binary |
+| `make run` | Build and run |
+| `make dev` | Run in debug mode |
+| `make deps` | Install dependencies |
+| `make test` | Run tests |
+| `make create-admin` | Create admin user interactively |
+| `make db-reset` | Delete database file |
+| `make generate-secret` | Generate a secure JWT secret |
+
+## TODO / Not Yet Implemented
+
+### Backend
+- [ ] Push notifications (APNs integration)
+- [ ] Profile picture upload endpoint
+- [ ] Image compression for large uploads
+- [ ] S3 storage backend
+- [ ] Email service integration (optional)
+- [ ] Background job for hard-deleting old soft-deleted content
+- [ ] Background job for cleaning old audit logs
+- [ ] Unit tests
+- [ ] Integration tests
+
+### iOS App
+- [ ] Not started - see `ios/` folder
+
+## Environment Variables
+
+See `.env.example` for full list. Key variables:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `JWT_SECRET` | Yes | Min 32 chars, used for signing JWTs |
+| `DATABASE_PATH` | No | Default: `./feats.db` |
+| `PORT` | No | Default: `8080` |
+| `GIN_MODE` | No | `debug` or `release` |
+| `BCRYPT_COST` | No | Default: `12` |
+
+## Database
+
+SQLite database auto-created on first run. Tables are auto-migrated via GORM.
+
+Core activity types are seeded automatically:
+- Gym 🏋️
+- Hiking 🥾
+- Golf ⛳
+- Walking 🚶
+- Running 🏃
+- Cycling 🚴
+- Swimming 🏊
+
+## Security Notes
+
+- All passwords hashed with bcrypt (cost 12)
+- JWT access tokens are short-lived (15 min)
+- Refresh tokens stored as SHA-256 hashes
+- Refresh token rotation on each use
+- Account lockout after 5 failed login attempts
+- All security events logged to audit_logs table
+- Images re-encoded to JPEG to strip metadata
+- Rate limiting on all endpoints
+- Security headers on all responses
+
+## Reference Documents
+
+- `SPECIFICATION.md` - Full project specification with security requirements

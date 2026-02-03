@@ -1,0 +1,143 @@
+# =========================
+# OS Generated Files
+# =========================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# =========================
+# IDE / Editor
+# =========================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# =========================
+# Go Backend
+# =========================
+# Binaries
+backend/feats-api
+backend/admin-cli
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of go coverage
+*.out
+coverage.html
+
+# Go workspace
+go.work
+go.work.sum
+
+# Vendor directory (uncomment if not vendoring)
+# vendor/
+
+# Database files
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Storage directories (uploaded images)
+backend/storage/
+storage/
+
+# Log files
+*.log
+logs/
+
+# =========================
+# iOS / Xcode
+# =========================
+# Build generated
+ios/build/
+ios/DerivedData/
+ios/**/DerivedData/
+
+# Xcode user-specific
+ios/**/*.xcodeproj/xcuserdata/
+ios/**/*.xcworkspace/xcuserdata/
+ios/**/xcuserdata/
+
+# Xcode project settings
+ios/**/*.xcodeproj/project.xcworkspace/
+!ios/**/*.xcodeproj/project.xcworkspace/xcshareddata/
+ios/**/xcshareddata/IDEWorkspaceChecks.plist
+
+# Playgrounds
+ios/**/timeline.xctimeline
+ios/**/playground.xcworkspace
+
+# Swift Package Manager
+ios/.build/
+ios/Packages/
+ios/**/Package.resolved
+ios/.swiftpm/
+
+# CocoaPods (if used)
+ios/Pods/
+ios/Podfile.lock
+
+# Carthage (if used)
+ios/Carthage/Build/
+ios/Carthage/Checkouts/
+
+# fastlane
+ios/fastlane/report.xml
+ios/fastlane/Preview.html
+ios/fastlane/screenshots/**/*.png
+ios/fastlane/test_output
+
+# Archives
+*.xcarchive
+
+# =========================
+# Secrets / Credentials
+# =========================
+*.pem
+*.p8
+*.p12
+*.key
+*.crt
+*.cer
+credentials.json
+secrets.json
+AuthKey_*.p8
+
+# =========================
+# Temporary Files
+# =========================
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# =========================
+# Debug
+# =========================
+*.dSYM.zip
+*.dSYM
+debug/
