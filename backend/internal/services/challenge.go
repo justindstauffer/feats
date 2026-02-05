@@ -49,7 +49,8 @@ func (s *ChallengeService) ListChallenges(groupID string, includeExpired bool) (
 
 	if !includeExpired {
 		now := time.Now().In(config.Location)
-		startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, config.Location)
+		// Convert to UTC for SQLite comparison (SQLite compares dates as strings)
+		startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, config.Location).UTC()
 		query = query.Where("end_date IS NULL OR end_date >= ?", startOfToday)
 	}
 
@@ -149,10 +150,12 @@ func (s *ChallengeService) JoinChallenge(groupID, challengeID, userID string) er
 
 	// Check if challenge has ended (allow joining until end of the end date day)
 	if challenge.EndDate != nil {
-		now := time.Now().In(config.Location)
+		now := time.Now().UTC()
+		// Convert end date to UTC for comparison
+		endDateUTC := challenge.EndDate.UTC()
 		endOfEndDate := time.Date(
-			challenge.EndDate.Year(), challenge.EndDate.Month(), challenge.EndDate.Day(),
-			23, 59, 59, 0, config.Location,
+			endDateUTC.Year(), endDateUTC.Month(), endDateUTC.Day(),
+			23, 59, 59, 0, time.UTC,
 		)
 		if now.After(endOfEndDate) {
 			return ErrChallengeEnded
@@ -215,10 +218,11 @@ func (s *ChallengeService) UpdateProgressForActivity(groupID, userID string, act
 	log.Printf("[Challenge] UpdateProgressForActivity called: groupID=%s, userID=%s, activityTypeID=%s", groupID, userID, activityTypeID)
 
 	// Get current date boundaries for proper comparison using configured timezone
+	// Convert to UTC for SQLite comparison (SQLite compares dates as strings)
 	now := time.Now().In(config.Location)
-	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, config.Location)
+	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, config.Location).UTC()
 	endOfToday := startOfToday.Add(24 * time.Hour)
-	log.Printf("[Challenge] Date boundaries: startOfToday=%v, endOfToday=%v", startOfToday, endOfToday)
+	log.Printf("[Challenge] Date boundaries (UTC): startOfToday=%v, endOfToday=%v", startOfToday, endOfToday)
 
 	// Find all active challenges the user is participating in within this group
 	var participants []models.ChallengeParticipant

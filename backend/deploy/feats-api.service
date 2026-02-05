@@ -1,0 +1,51 @@
+# Systemd service file for Feats API (non-Docker deployment)
+# Place this in /etc/systemd/system/feats-api.service
+#
+# Commands:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable feats-api
+#   sudo systemctl start feats-api
+#   sudo systemctl status feats-api
+#   sudo journalctl -u feats-api -f
+
+[Unit]
+Description=Feats API Server
+Documentation=https://github.com/jstauff/feats-api
+After=network.target
+
+[Service]
+Type=simple
+User=feats
+Group=feats
+
+# Working directory
+WorkingDirectory=/opt/feats-api
+
+# Environment file
+EnvironmentFile=/opt/feats-api/.env
+
+# Run the binary
+ExecStart=/opt/feats-api/feats-api
+
+# Restart policy
+Restart=always
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/feats-api/data /opt/feats-api/storage
+
+# Resource limits
+LimitNOFILE=65535
+MemoryMax=512M
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=feats-api
+
+[Install]
+WantedBy=multi-user.target
