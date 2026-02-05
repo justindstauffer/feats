@@ -6,13 +6,18 @@ class LeaderboardViewModel {
     var streaks: [Streak] = []
     var isLoading = false
     var errorMessage: String?
+    var currentGroupId: String?
 
     private let apiClient = APIClient.shared
 
-    func loadLeaderboard() async {
+    func loadLeaderboard(groupId: String) async {
+        currentGroupId = groupId
         isLoading = true
         do {
-            streaks = try await apiClient.request(endpoint: "/streaks/leaderboard")
+            streaks = try await apiClient.groupRequest(
+                groupId: groupId,
+                endpoint: "/streaks/leaderboard"
+            )
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -22,11 +27,18 @@ class LeaderboardViewModel {
 
 struct LeaderboardView: View {
     @Environment(AuthService.self) private var authService
+    @Environment(GroupService.self) private var groupService
+    @Environment(AppState.self) private var appState
     @State private var viewModel = LeaderboardViewModel()
+    @State private var showGroupSwitcher = false
+
+    private var currentGroupId: String? {
+        groupService.currentGroup?.id
+    }
 
     var body: some View {
         NavigationStack {
-            Group {
+            SwiftUI.Group {
                 if viewModel.isLoading && viewModel.streaks.isEmpty {
                     ProgressView("Loading...")
                 } else if viewModel.streaks.isEmpty {
@@ -39,14 +51,41 @@ struct LeaderboardView: View {
                     leaderboardList
                 }
             }
-            .navigationTitle("Streaks")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    GroupHeader {
+                        showGroupSwitcher = true
+                    }
+                }
+            }
             .refreshable {
-                await viewModel.loadLeaderboard()
+                if let groupId = currentGroupId {
+                    await viewModel.loadLeaderboard(groupId: groupId)
+                }
             }
             .task {
-                if viewModel.streaks.isEmpty {
-                    await viewModel.loadLeaderboard()
+                if let groupId = currentGroupId, viewModel.streaks.isEmpty {
+                    await viewModel.loadLeaderboard(groupId: groupId)
                 }
+            }
+            .onChange(of: currentGroupId) { _, newGroupId in
+                if let groupId = newGroupId {
+                    Task {
+                        await viewModel.loadLeaderboard(groupId: groupId)
+                    }
+                }
+            }
+            .onAppear {
+                if appState.streaksNeedRefresh, let groupId = currentGroupId {
+                    Task {
+                        await viewModel.loadLeaderboard(groupId: groupId)
+                        appState.streaksNeedRefresh = false
+                    }
+                }
+            }
+            .sheet(isPresented: $showGroupSwitcher) {
+                GroupSwitcherView()
             }
         }
     }
@@ -130,4 +169,6 @@ struct LeaderboardRow: View {
 #Preview {
     LeaderboardView()
         .environment(AuthService.shared)
+        .environment(AppState.shared)
+        .environment(GroupService.shared)
 }

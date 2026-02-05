@@ -39,3 +39,15 @@ struct ChangePasswordRequest: Codable {
         case newPassword = "new_password"
     }
 }
+
+struct RegisterRequest: Codable {
+    let email: String
+    let password: String
+    let name: String
+    let inviteCode: String
+
+    enum CodingKeys: String, CodingKey {
+        case email, password, name
+        case inviteCode = "invite_code"
+    }
+}

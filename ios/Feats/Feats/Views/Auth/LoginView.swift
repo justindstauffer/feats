@@ -7,6 +7,7 @@ struct LoginView: View {
     @State private var password = ""
     @State private var errorMessage: String?
     @State private var isLoading = false
+    @State private var showRegister = false
 
     var body: some View {
         NavigationStack {
@@ -64,9 +65,24 @@ struct LoginView: View {
                 }
                 .padding(.horizontal, 32)
 
+                // Register link
+                VStack(spacing: 8) {
+                    Text("Don't have an account?")
+                        .foregroundStyle(.secondary)
+
+                    Button("Create Account") {
+                        showRegister = true
+                    }
+                    .fontWeight(.medium)
+                }
+                .padding(.top, 16)
+
                 Spacer()
             }
             .navigationBarHidden(true)
+            .sheet(isPresented: $showRegister) {
+                RegisterView()
+            }
         }
     }
 

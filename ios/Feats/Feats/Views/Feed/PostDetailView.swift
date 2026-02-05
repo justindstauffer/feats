@@ -9,6 +9,7 @@ class PostDetailViewModel {
     var userReaction: Reaction?
     var isLoading = false
     var errorMessage: String?
+    var groupId: String?
 
     private let apiClient = APIClient.shared
 
@@ -16,19 +17,26 @@ class PostDetailViewModel {
         self.post = post
     }
 
-    func loadDetails() async {
+    func loadDetails(groupId: String) async {
+        self.groupId = groupId
         isLoading = true
 
         // Load comments
         do {
-            comments = try await apiClient.request(endpoint: "/posts/\(post.id)/comments")
+            comments = try await apiClient.groupRequest(
+                groupId: groupId,
+                endpoint: "/posts/\(post.id)/comments"
+            )
         } catch {
             errorMessage = error.localizedDescription
         }
 
         // Load reactions
         do {
-            let response: ReactionsResponse = try await apiClient.request(endpoint: "/posts/\(post.id)/reactions")
+            let response: ReactionsResponse = try await apiClient.groupRequest(
+                groupId: groupId,
+                endpoint: "/posts/\(post.id)/reactions"
+            )
             reactionSummary = response.summary
             // Find user's reaction
             if let userId = AuthService.shared.currentUser?.id {
@@ -41,7 +49,7 @@ class PostDetailViewModel {
         isLoading = false
     }
 
-    func addReaction(_ type: ReactionType) async {
+    func addReaction(_ type: ReactionType, groupId: String) async {
         // Store old reaction for optimistic update
         let oldReactionType = userReaction?.reactionType
 
@@ -77,20 +85,21 @@ class PostDetailViewModel {
 
         do {
             let request = AddReactionRequest(reactionType: type.rawValue)
-            let reaction: Reaction = try await apiClient.request(
+            let reaction: Reaction = try await apiClient.groupRequest(
+                groupId: groupId,
                 endpoint: "/posts/\(post.id)/reactions",
                 method: .post,
                 body: request
             )
             userReaction = reaction
-            await loadDetails() // Refresh to ensure consistency
+            await loadDetails(groupId: groupId) // Refresh to ensure consistency
         } catch {
             errorMessage = error.localizedDescription
-            await loadDetails() // Reload on error to restore correct state
+            await loadDetails(groupId: groupId) // Reload on error to restore correct state
         }
     }
 
-    func removeReaction() async {
+    func removeReaction(groupId: String) async {
         // Store the old reaction type to update summary optimistically
         let oldReactionType = userReaction?.reactionType
         userReaction = nil
@@ -107,34 +116,37 @@ class PostDetailViewModel {
         }
 
         do {
-            _ = try await apiClient.requestMessage(
+            _ = try await apiClient.groupRequestMessage(
+                groupId: groupId,
                 endpoint: "/posts/\(post.id)/reactions",
                 method: .delete
             )
-            await loadDetails() // Refresh to ensure consistency
+            await loadDetails(groupId: groupId) // Refresh to ensure consistency
         } catch {
             errorMessage = error.localizedDescription
-            await loadDetails() // Reload on error to restore correct state
+            await loadDetails(groupId: groupId) // Reload on error to restore correct state
         }
     }
 
-    func addComment(_ content: String, parentId: String? = nil) async {
+    func addComment(_ content: String, groupId: String, parentId: String? = nil) async {
         do {
             let request = CreateCommentRequest(content: content, parentId: parentId)
-            let _: Comment = try await apiClient.request(
+            let _: Comment = try await apiClient.groupRequest(
+                groupId: groupId,
                 endpoint: "/posts/\(post.id)/comments",
                 method: .post,
                 body: request
             )
-            await loadDetails()
+            await loadDetails(groupId: groupId)
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    func deletePost() async -> Bool {
+    func deletePost(groupId: String) async -> Bool {
         do {
-            _ = try await apiClient.requestMessage(
+            _ = try await apiClient.groupRequestMessage(
+                groupId: groupId,
                 endpoint: "/posts/\(post.id)",
                 method: .delete
             )
@@ -155,6 +167,7 @@ struct PostDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthService.self) private var authService
     @Environment(AppState.self) private var appState
+    @Environment(GroupService.self) private var groupService
     @State private var viewModel: PostDetailViewModel
     @State private var newComment = ""
     @State private var showReactionPicker = false
@@ -162,6 +175,10 @@ struct PostDetailView: View {
 
     init(post: Post) {
         _viewModel = State(initialValue: PostDetailViewModel(post: post))
+    }
+
+    private var currentGroupId: String? {
+        groupService.currentGroup?.id
     }
 
     private var canDelete: Bool {
@@ -209,10 +226,12 @@ struct PostDetailView: View {
             titleVisibility: .visible
         ) {
             Button("Delete", role: .destructive) {
-                Task {
-                    if await viewModel.deletePost() {
-                        appState.feedNeedsRefresh = true
-                        dismiss()
+                if let groupId = currentGroupId {
+                    Task {
+                        if await viewModel.deletePost(groupId: groupId) {
+                            appState.feedNeedsRefresh = true
+                            dismiss()
+                        }
                     }
                 }
             }
@@ -221,7 +240,9 @@ struct PostDetailView: View {
             Text("Are you sure you want to delete this post? This action cannot be undone.")
         }
         .task {
-            await viewModel.loadDetails()
+            if let groupId = currentGroupId {
+                await viewModel.loadDetails(groupId: groupId)
+            }
         }
     }
 
@@ -245,11 +266,13 @@ struct PostDetailView: View {
             HStack(spacing: 8) {
                 ForEach(ReactionType.allCases, id: \.self) { type in
                     Button {
-                        Task {
-                            if viewModel.userReaction?.reactionType == type {
-                                await viewModel.removeReaction()
-                            } else {
-                                await viewModel.addReaction(type)
+                        if let groupId = currentGroupId {
+                            Task {
+                                if viewModel.userReaction?.reactionType == type {
+                                    await viewModel.removeReaction(groupId: groupId)
+                                } else {
+                                    await viewModel.addReaction(type, groupId: groupId)
+                                }
                             }
                         }
                     } label: {
@@ -291,9 +314,11 @@ struct PostDetailView: View {
                 .textFieldStyle(.roundedBorder)
 
             Button {
-                Task {
-                    await viewModel.addComment(newComment)
-                    newComment = ""
+                if let groupId = currentGroupId {
+                    Task {
+                        await viewModel.addComment(newComment, groupId: groupId)
+                        newComment = ""
+                    }
                 }
             } label: {
                 Image(systemName: "paperplane.fill")

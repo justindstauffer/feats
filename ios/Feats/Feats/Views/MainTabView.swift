@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MainTabView: View {
     @Bindable private var appState = AppState.shared
+    @State private var groupService = GroupService.shared
 
     var body: some View {
         TabView(selection: $appState.selectedTab) {
@@ -36,6 +37,7 @@ struct MainTabView: View {
                 .tag(4)
         }
         .environment(appState)
+        .environment(groupService)
     }
 }
 
@@ -43,4 +45,5 @@ struct MainTabView: View {
     MainTabView()
         .environment(AuthService.shared)
         .environment(AppState.shared)
+        .environment(GroupService.shared)
 }

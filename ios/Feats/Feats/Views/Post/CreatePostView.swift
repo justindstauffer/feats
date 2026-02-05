@@ -13,13 +13,18 @@ class CreatePostViewModel {
     var isPosting = false
     var errorMessage: String?
     var successMessage: String?
+    var currentGroupId: String?
 
     private let apiClient = APIClient.shared
 
-    func loadActivities() async {
+    func loadActivities(groupId: String) async {
+        currentGroupId = groupId
         isLoading = true
         do {
-            activities = try await apiClient.request(endpoint: "/activities")
+            activities = try await apiClient.groupRequest(
+                groupId: groupId,
+                endpoint: "/activities"
+            )
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -36,7 +41,7 @@ class CreatePostViewModel {
         }
     }
 
-    func createPost() async -> Bool {
+    func createPost(groupId: String) async -> Bool {
         guard let activity = selectedActivity else {
             errorMessage = "Please select an activity"
             return false
@@ -53,7 +58,8 @@ class CreatePostViewModel {
                 description: description.isEmpty ? nil : description
             )
 
-            let post: Post = try await apiClient.request(
+            let post: Post = try await apiClient.groupRequest(
+                groupId: groupId,
                 endpoint: "/posts",
                 method: .post,
                 body: request
@@ -62,8 +68,9 @@ class CreatePostViewModel {
             // Upload images
             for image in loadedImages {
                 if let data = image.jpegData(compressionQuality: 0.8) {
-                    _ = try await apiClient.uploadImage(
-                        to: "/posts/\(post.id)/images",
+                    _ = try await apiClient.groupUploadImage(
+                        groupId: groupId,
+                        endpoint: "/posts/\(post.id)/images",
                         imageData: data
                     )
                 }
@@ -90,7 +97,12 @@ class CreatePostViewModel {
 
 struct CreatePostView: View {
     @Environment(AppState.self) private var appState
+    @Environment(GroupService.self) private var groupService
     @State private var viewModel = CreatePostViewModel()
+
+    private var currentGroupId: String? {
+        groupService.currentGroup?.id
+    }
 
     var body: some View {
         NavigationStack {
@@ -162,9 +174,11 @@ struct CreatePostView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Post") {
-                        Task {
-                            if await viewModel.createPost() {
-                                appState.postCreated()
+                        if let groupId = currentGroupId {
+                            Task {
+                                if await viewModel.createPost(groupId: groupId) {
+                                    appState.postCreated()
+                                }
                             }
                         }
                     }
@@ -184,8 +198,15 @@ struct CreatePostView: View {
                 }
             }
             .task {
-                if viewModel.activities.isEmpty {
-                    await viewModel.loadActivities()
+                if let groupId = currentGroupId, viewModel.activities.isEmpty {
+                    await viewModel.loadActivities(groupId: groupId)
+                }
+            }
+            .onChange(of: currentGroupId) { _, newGroupId in
+                if let groupId = newGroupId {
+                    Task {
+                        await viewModel.loadActivities(groupId: groupId)
+                    }
                 }
             }
         }
@@ -223,4 +244,5 @@ struct ActivityButton: View {
 #Preview {
     CreatePostView()
         .environment(AppState.shared)
+        .environment(GroupService.shared)
 }

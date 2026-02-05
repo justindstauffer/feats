@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CreateChallengeView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(GroupService.self) private var groupService
 
     @State private var title = ""
     @State private var description = ""
@@ -19,6 +20,10 @@ struct CreateChallengeView: View {
     let onCreated: () async -> Void
 
     private let apiClient = APIClient.shared
+
+    private var currentGroupId: String? {
+        groupService.currentGroup?.id
+    }
 
     var body: some View {
         NavigationStack {
@@ -86,20 +91,27 @@ struct CreateChallengeView: View {
                 }
             }
             .task {
-                await loadActivities()
+                if let groupId = currentGroupId {
+                    await loadActivities(groupId: groupId)
+                }
             }
         }
     }
 
-    private func loadActivities() async {
+    private func loadActivities(groupId: String) async {
         do {
-            activities = try await apiClient.request(endpoint: "/activities")
+            activities = try await apiClient.groupRequest(
+                groupId: groupId,
+                endpoint: "/activities"
+            )
         } catch {
             // Ignore
         }
     }
 
     private func create() {
+        guard let groupId = currentGroupId else { return }
+
         isLoading = true
         errorMessage = nil
 
@@ -114,7 +126,8 @@ struct CreateChallengeView: View {
                     endDate: hasEndDate ? endDate : nil
                 )
 
-                let _: Challenge = try await apiClient.request(
+                let _: Challenge = try await apiClient.groupRequest(
+                    groupId: groupId,
                     endpoint: "/challenges",
                     method: .post,
                     body: request
@@ -132,4 +145,5 @@ struct CreateChallengeView: View {
 
 #Preview {
     CreateChallengeView { }
+        .environment(GroupService.shared)
 }

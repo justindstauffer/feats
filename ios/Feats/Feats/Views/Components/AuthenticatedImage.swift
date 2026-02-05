@@ -10,7 +10,7 @@ struct AuthenticatedImage: View {
 
     var body: some View {
         GeometryReader { geometry in
-            Group {
+            SwiftUI.Group {
                 if let image = image {
                     Image(uiImage: image)
                         .resizable()

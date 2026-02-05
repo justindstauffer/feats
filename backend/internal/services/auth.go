@@ -177,7 +177,7 @@ func (s *AuthService) ChangePassword(userID, currentPassword, newPassword string
 	}
 
 	// Validate new password
-	if err := s.validatePassword(newPassword); err != nil {
+	if err := s.ValidatePassword(newPassword); err != nil {
 		return err
 	}
 
@@ -254,7 +254,7 @@ func (s *AuthService) ResetPassword(token, newPassword string) error {
 	}
 
 	// Validate new password
-	if err := s.validatePassword(newPassword); err != nil {
+	if err := s.ValidatePassword(newPassword); err != nil {
 		return err
 	}
 
@@ -295,8 +295,8 @@ func (s *AuthService) ResetPassword(token, newPassword string) error {
 	return nil
 }
 
-// validatePassword checks if password meets requirements
-func (s *AuthService) validatePassword(password string) error {
+// ValidatePassword checks if password meets requirements
+func (s *AuthService) ValidatePassword(password string) error {
 	if len(password) < 12 {
 		return fmt.Errorf("%w: must be at least 12 characters", ErrPasswordTooWeak)
 	}
@@ -430,7 +430,7 @@ func HashIP(ip string) string {
 
 // HashPassword hashes a password with bcrypt
 func (s *AuthService) HashPassword(password string) (string, error) {
-	if err := s.validatePassword(password); err != nil {
+	if err := s.ValidatePassword(password); err != nil {
 		return "", err
 	}
 

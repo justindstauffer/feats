@@ -11,16 +11,26 @@ import (
 )
 
 type AuthHandler struct {
-	authService  *services.AuthService
-	auditService *services.AuditService
-	cfg          *config.Config
+	authService       *services.AuthService
+	userService       *services.UserService
+	betaInviteService *services.BetaInviteService
+	auditService      *services.AuditService
+	cfg               *config.Config
 }
 
-func NewAuthHandler(authService *services.AuthService, auditService *services.AuditService, cfg *config.Config) *AuthHandler {
+func NewAuthHandler(
+	authService *services.AuthService,
+	userService *services.UserService,
+	betaInviteService *services.BetaInviteService,
+	auditService *services.AuditService,
+	cfg *config.Config,
+) *AuthHandler {
 	return &AuthHandler{
-		authService:  authService,
-		auditService: auditService,
-		cfg:          cfg,
+		authService:       authService,
+		userService:       userService,
+		betaInviteService: betaInviteService,
+		auditService:      auditService,
+		cfg:               cfg,
 	}
 }
 
@@ -49,6 +59,90 @@ type ChangePasswordInput struct {
 
 type RegisterDeviceInput struct {
 	DeviceToken string `json:"device_token" binding:"required"`
+}
+
+// Register handles user self-registration with a beta invite code
+func (h *AuthHandler) Register(c *gin.Context) {
+	var input models.RegisterRequest
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse(
+			models.ErrCodeValidation,
+			"Invalid request body",
+		))
+		return
+	}
+
+	// Validate and consume the beta invite code
+	_, err := h.betaInviteService.ValidateAndConsume(input.InviteCode)
+	if err != nil {
+		switch err {
+		case services.ErrBetaInviteInvalid:
+			c.JSON(http.StatusBadRequest, models.ErrorResponse(
+				models.ErrCodeValidation,
+				"Invalid invite code",
+			))
+		case services.ErrBetaInviteExpired:
+			c.JSON(http.StatusBadRequest, models.ErrorResponse(
+				models.ErrCodeValidation,
+				"Invite code has expired",
+			))
+		case services.ErrBetaInviteMaxUses:
+			c.JSON(http.StatusBadRequest, models.ErrorResponse(
+				models.ErrCodeValidation,
+				"Invite code has reached maximum uses",
+			))
+		default:
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse(
+				models.ErrCodeInternalError,
+				"An error occurred",
+			))
+		}
+		return
+	}
+
+	// Create the user
+	user, err := h.userService.RegisterUser(input.Email, input.Password, input.Name, h.authService)
+	if err != nil {
+		switch err {
+		case services.ErrEmailExists:
+			c.JSON(http.StatusConflict, models.ErrorResponse(
+				models.ErrCodeConflict,
+				"Email already registered",
+			))
+		case services.ErrPasswordTooWeak:
+			c.JSON(http.StatusBadRequest, models.ErrorResponse(
+				models.ErrCodeValidation,
+				err.Error(),
+			))
+		default:
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse(
+				models.ErrCodeInternalError,
+				"An error occurred",
+			))
+		}
+		return
+	}
+
+	ipHash := services.HashIP(c.ClientIP())
+	userAgent := c.GetHeader("User-Agent")
+
+	// Log the user in automatically after registration
+	tokens, _, err := h.authService.Login(input.Email, input.Password, ipHash, userAgent)
+	if err != nil {
+		// User created but login failed - they can login manually
+		c.JSON(http.StatusCreated, models.SuccessResponse(gin.H{
+			"user":    user,
+			"message": "Account created. Please login.",
+		}))
+		return
+	}
+
+	h.auditService.LogLogin(&user.ID, ipHash, userAgent, true, "registered")
+
+	c.JSON(http.StatusCreated, models.SuccessResponse(gin.H{
+		"tokens": tokens,
+		"user":   user,
+	}))
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {

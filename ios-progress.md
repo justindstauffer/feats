@@ -30,16 +30,28 @@ ios/
     │   ├── Streak.swift         # Streak tracking
     │   ├── Challenge.swift      # Challenges
     │   ├── Goal.swift           # Personal goals
+    │   ├── Group.swift          # Groups and memberships (NEW)
+    │   ├── BetaInvite.swift     # Beta invite codes (NEW)
     │   └── APIResponse.swift    # API response wrappers
     ├── Services/
     │   ├── KeychainService.swift  # Secure token storage
     │   ├── APIClient.swift        # HTTP client with auth
     │   ├── AuthService.swift      # Authentication state
+    │   ├── GroupService.swift     # Group state management (NEW)
     │   └── AppState.swift         # App-wide state management
     ├── Views/
     │   ├── MainTabView.swift      # Tab navigation
     │   ├── Auth/
-    │   │   └── LoginView.swift
+    │   │   ├── LoginView.swift
+    │   │   └── RegisterView.swift   # NEW
+    │   ├── Admin/                   # NEW folder
+    │   │   └── BetaInvitesView.swift
+    │   ├── Onboarding/            # NEW folder
+    │   │   └── GroupOnboardingView.swift
+    │   ├── Groups/                # NEW folder
+    │   │   ├── CreateGroupView.swift
+    │   │   ├── JoinGroupView.swift
+    │   │   └── GroupSwitcherView.swift
     │   ├── Feed/
     │   │   ├── FeedView.swift
     │   │   └── PostDetailView.swift
@@ -56,6 +68,7 @@ ios/
     │   │   └── LeaderboardView.swift
     │   └── Components/
     │       ├── PostCard.swift
+    │       ├── GroupHeader.swift         # Group switcher button (NEW)
     │       └── AuthenticatedImage.swift  # Image loading with auth
     ├── ViewModels/              # Empty - using @Observable in views
     └── Utilities/               # Empty - for future utilities
@@ -147,6 +160,16 @@ The Xcode project has been created. If starting fresh:
 - [x] Tab navigation control from any view
 - [x] Post creation triggers refresh of Feed, Challenges, Profile, Streaks
 
+### Multi-Tenancy / Groups
+- [x] Group model and GroupService
+- [x] Onboarding flow (create/join group)
+- [x] Group switcher UI in navigation bar
+- [x] GroupHeader component for all main views
+- [x] All content views updated for group-scoped API
+- [x] Last active group persistence via UserDefaults
+- [x] Automatic data refresh on group switch
+- [x] Group-scoped API endpoints for posts, challenges, streaks, goals
+
 ## API Client Features
 
 - [x] Base URL configuration (debug vs release)
@@ -157,8 +180,66 @@ The Xcode project has been created. If starting fresh:
 - [x] Paginated request support
 - [x] Generic request methods
 - [x] Authenticated image fetching (`fetchImageData`)
+- [x] Group-scoped request methods (`groupRequest`, `groupRequestPaginated`, `groupRequestMessage`, `groupUploadImage`)
 
 ## Recent Changes (Feb 2026)
+
+### Beta Invite System
+Added invite-only registration for beta testing:
+
+**Backend:**
+- `POST /auth/register` - Public registration with beta invite code
+- `POST /admin/beta-invites` - Create invite codes (admin only)
+- `GET /admin/beta-invites` - List all invite codes (admin only)
+- `DELETE /admin/beta-invites/:id` - Delete invite code (admin only)
+
+**iOS:**
+- `RegisterView` - Registration form with invite code, email, password, name
+- Updated `LoginView` with "Create Account" link
+- Updated `AuthService` with `register()` method
+- `BetaInvite` model
+- `BetaInvitesView` - Admin UI to create, view, and share invite codes
+- Admin section in `ProfileView` with link to Beta Invites
+
+**Invite Code Features:**
+- Format: `XXXX-XXXX-XXXX` (alphanumeric, no ambiguous chars)
+- Configurable max uses (0 = unlimited, default 1)
+- Configurable expiration (default 7 days)
+- Optional note field for tracking who codes are for
+
+### Multi-Tenancy UI (Group-Based)
+Added support for group-based multi-tenancy where all content is scoped to the selected group:
+
+**New Files:**
+- `Models/Group.swift` - Group, GroupMember, GroupInvite, GroupRole models
+- `Services/GroupService.swift` - Singleton for managing group state
+- `Views/Onboarding/GroupOnboardingView.swift` - First-time group setup
+- `Views/Groups/CreateGroupView.swift` - Create new group form
+- `Views/Groups/JoinGroupView.swift` - Join group via invite code
+- `Views/Groups/GroupSwitcherView.swift` - Modal for switching groups
+- `Views/Components/GroupHeader.swift` - Navigation bar group button
+
+**Modified Files:**
+- `APIClient.swift` - Added group-scoped request methods
+- `AuthService.swift` - Load/clear groups on auth changes
+- `FeatsApp.swift` - Added onboarding flow check
+- `MainTabView.swift` - Added GroupService to environment
+- `FeedView.swift` - Added GroupHeader, group-scoped API
+- `PostDetailView.swift` - Group-scoped reactions/comments
+- `ChallengesView.swift` - Added GroupHeader, group-scoped API
+- `CreateChallengeView.swift` - Group-scoped API
+- `LeaderboardView.swift` - Added GroupHeader, group-scoped API
+- `CreatePostView.swift` - Group-scoped post/activities
+- `ProfileView.swift` - Group-scoped streak/goals
+
+**Flow:**
+1. Login → Groups load automatically
+2. If no groups → Onboarding shown (Create or Join)
+3. After creating/joining → Main UI with group selected
+4. Tap GroupHeader → Switcher modal → Select different group → Content refreshes
+5. Last active group persisted in UserDefaults
+
+
 
 ### Challenge Completed Tab
 - Added segmented control with "Active" and "Completed" tabs
@@ -232,6 +313,13 @@ Moved `.refreshable` modifier directly onto the `List` in `ChallengesView` inste
 - [ ] Implement chosen behavior in backend
 - [ ] Update iOS to refresh challenge data after post deletion
 
+### Group Management (Future)
+- [ ] Badge counts per group in switcher
+- [ ] Group admin settings (create invites, manage members)
+- [ ] Push notifications showing group context
+- [ ] Group avatars/images
+- [ ] Leave group confirmation
+
 ### Other Future Features
 - [ ] Goals creation/editing UI
 - [ ] Reply to comments
@@ -275,11 +363,12 @@ This ensures date comparisons for challenges work correctly with the iOS app's l
 
 - Access tokens stored in memory only (cleared on app termination)
 - Refresh tokens stored in Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`
-- No sensitive data in UserDefaults
+- No sensitive data in UserDefaults (only last active group ID)
 - ATS configured to allow localhost only in development
 - Password validation enforces same rules as backend
 - Images are fetched with authentication tokens
 - Post deletion restricted to owner or admin
+- All content API calls are scoped to user's groups (enforced by backend)
 
 ## Testing the App
 
@@ -305,6 +394,10 @@ This ensures date comparisons for challenges work correctly with the iOS app's l
    - Completing a challenge creates an Achievement post
    - Completed challenges appear in Completed tab
    - Posts can be deleted from detail view
+   - Group onboarding shows for new users
+   - Can create and join groups
+   - Switching groups refreshes all content
+   - Last active group persists across app launches
 
 ## Known Issues (Resolved)
 

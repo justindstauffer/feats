@@ -11,14 +11,19 @@ class ChallengesViewModel {
     var challenges: [Challenge] = []
     var isLoading = false
     var errorMessage: String?
+    var currentGroupId: String?
 
     private let apiClient = APIClient.shared
 
-    func loadChallenges() async {
+    func loadChallenges(groupId: String) async {
+        currentGroupId = groupId
         isLoading = true
         do {
             // Load all challenges including expired ones to show in completed tab
-            challenges = try await apiClient.request(endpoint: "/challenges?include_expired=true")
+            challenges = try await apiClient.groupRequest(
+                groupId: groupId,
+                endpoint: "/challenges?include_expired=true"
+            )
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -42,25 +47,27 @@ class ChallengesViewModel {
         }
     }
 
-    func joinChallenge(_ challenge: Challenge) async {
+    func joinChallenge(_ challenge: Challenge, groupId: String) async {
         do {
-            _ = try await apiClient.requestMessage(
+            _ = try await apiClient.groupRequestMessage(
+                groupId: groupId,
                 endpoint: "/challenges/\(challenge.id)/join",
                 method: .post
             )
-            await loadChallenges()
+            await loadChallenges(groupId: groupId)
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    func leaveChallenge(_ challenge: Challenge) async {
+    func leaveChallenge(_ challenge: Challenge, groupId: String) async {
         do {
-            _ = try await apiClient.requestMessage(
+            _ = try await apiClient.groupRequestMessage(
+                groupId: groupId,
                 endpoint: "/challenges/\(challenge.id)/leave",
                 method: .delete
             )
-            await loadChallenges()
+            await loadChallenges(groupId: groupId)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -70,12 +77,18 @@ class ChallengesViewModel {
 struct ChallengesView: View {
     @Environment(AuthService.self) private var authService
     @Environment(AppState.self) private var appState
+    @Environment(GroupService.self) private var groupService
     @State private var viewModel = ChallengesViewModel()
     @State private var showCreateChallenge = false
+    @State private var showGroupSwitcher = false
     @State private var selectedTab: ChallengeTab = .active
 
     private var currentUserId: String {
         authService.currentUser?.id ?? ""
+    }
+
+    private var currentGroupId: String? {
+        groupService.currentGroup?.id
     }
 
     var body: some View {
@@ -91,7 +104,7 @@ struct ChallengesView: View {
                 .padding()
 
                 // Content
-                Group {
+                SwiftUI.Group {
                     if viewModel.isLoading && viewModel.challenges.isEmpty {
                         Spacer()
                         ProgressView("Loading challenges...")
@@ -106,8 +119,13 @@ struct ChallengesView: View {
                     }
                 }
             }
-            .navigationTitle("Challenges")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    GroupHeader {
+                        showGroupSwitcher = true
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         showCreateChallenge = true
@@ -118,18 +136,30 @@ struct ChallengesView: View {
             }
             .sheet(isPresented: $showCreateChallenge) {
                 CreateChallengeView {
-                    await viewModel.loadChallenges()
+                    if let groupId = currentGroupId {
+                        await viewModel.loadChallenges(groupId: groupId)
+                    }
                 }
             }
+            .sheet(isPresented: $showGroupSwitcher) {
+                GroupSwitcherView()
+            }
             .task {
-                if viewModel.challenges.isEmpty {
-                    await viewModel.loadChallenges()
+                if let groupId = currentGroupId, viewModel.challenges.isEmpty {
+                    await viewModel.loadChallenges(groupId: groupId)
+                }
+            }
+            .onChange(of: currentGroupId) { _, newGroupId in
+                if let groupId = newGroupId {
+                    Task {
+                        await viewModel.loadChallenges(groupId: groupId)
+                    }
                 }
             }
             .onAppear {
-                if appState.challengesNeedRefresh {
+                if appState.challengesNeedRefresh, let groupId = currentGroupId {
                     Task {
-                        await viewModel.loadChallenges()
+                        await viewModel.loadChallenges(groupId: groupId)
                         appState.challengesNeedRefresh = false
                     }
                 }
@@ -140,7 +170,7 @@ struct ChallengesView: View {
     private var activeChallengesList: some View {
         let activeChallenges = viewModel.activeChallenges(for: currentUserId)
 
-        return Group {
+        return SwiftUI.Group {
             if activeChallenges.isEmpty {
                 ContentUnavailableView(
                     "No Active Challenges",
@@ -154,13 +184,19 @@ struct ChallengesView: View {
                         currentUserId: currentUserId,
                         showCompletedBadge: false
                     ) {
-                        Task { await viewModel.joinChallenge(challenge) }
+                        if let groupId = currentGroupId {
+                            Task { await viewModel.joinChallenge(challenge, groupId: groupId) }
+                        }
                     } onLeave: {
-                        Task { await viewModel.leaveChallenge(challenge) }
+                        if let groupId = currentGroupId {
+                            Task { await viewModel.leaveChallenge(challenge, groupId: groupId) }
+                        }
                     }
                 }
                 .refreshable {
-                    await viewModel.loadChallenges()
+                    if let groupId = currentGroupId {
+                        await viewModel.loadChallenges(groupId: groupId)
+                    }
                 }
             }
         }
@@ -169,7 +205,7 @@ struct ChallengesView: View {
     private var completedChallengesList: some View {
         let completedChallenges = viewModel.completedChallenges(for: currentUserId)
 
-        return Group {
+        return SwiftUI.Group {
             if completedChallenges.isEmpty {
                 ContentUnavailableView(
                     "No Completed Challenges",
@@ -189,7 +225,9 @@ struct ChallengesView: View {
                     }
                 }
                 .refreshable {
-                    await viewModel.loadChallenges()
+                    if let groupId = currentGroupId {
+                        await viewModel.loadChallenges(groupId: groupId)
+                    }
                 }
             }
         }
@@ -342,4 +380,5 @@ struct ChallengeCard: View {
     ChallengesView()
         .environment(AuthService.shared)
         .environment(AppState.shared)
+        .environment(GroupService.shared)
 }

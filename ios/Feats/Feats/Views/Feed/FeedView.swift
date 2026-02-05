@@ -8,13 +8,15 @@ class FeedViewModel {
     var errorMessage: String?
     var currentPage = 1
     var hasMorePages = true
+    var currentGroupId: String?
 
     private let apiClient = APIClient.shared
 
-    func loadPosts(refresh: Bool = false) async {
-        if refresh {
+    func loadPosts(groupId: String, refresh: Bool = false) async {
+        if refresh || currentGroupId != groupId {
             currentPage = 1
             hasMorePages = true
+            currentGroupId = groupId
         }
 
         guard !isLoading, hasMorePages else { return }
@@ -23,13 +25,14 @@ class FeedViewModel {
         errorMessage = nil
 
         do {
-            let result: ([Post], Pagination?) = try await apiClient.requestPaginated(
+            let result: ([Post], Pagination?) = try await apiClient.groupRequestPaginated(
+                groupId: groupId,
                 endpoint: "/posts",
                 page: currentPage,
                 perPage: 20
             )
 
-            if refresh {
+            if refresh || currentGroupId != groupId {
                 posts = result.0
             } else {
                 posts.append(contentsOf: result.0)
@@ -48,9 +51,10 @@ class FeedViewModel {
         isLoading = false
     }
 
-    func deletePost(_ post: Post) async {
+    func deletePost(_ post: Post, groupId: String) async {
         do {
-            _ = try await apiClient.requestMessage(
+            _ = try await apiClient.groupRequestMessage(
+                groupId: groupId,
                 endpoint: "/posts/\(post.id)",
                 method: .delete
             )
@@ -65,10 +69,16 @@ struct FeedView: View {
     @State private var viewModel = FeedViewModel()
     @Environment(AuthService.self) private var authService
     @Environment(AppState.self) private var appState
+    @Environment(GroupService.self) private var groupService
+    @State private var showGroupSwitcher = false
+
+    private var currentGroupId: String? {
+        groupService.currentGroup?.id
+    }
 
     var body: some View {
         NavigationStack {
-            Group {
+            SwiftUI.Group {
                 if viewModel.posts.isEmpty && viewModel.isLoading {
                     ProgressView("Loading posts...")
                 } else if viewModel.posts.isEmpty {
@@ -81,22 +91,41 @@ struct FeedView: View {
                     postList
                 }
             }
-            .navigationTitle("Family Feed")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    GroupHeader {
+                        showGroupSwitcher = true
+                    }
+                }
+            }
             .refreshable {
-                await viewModel.loadPosts(refresh: true)
+                if let groupId = currentGroupId {
+                    await viewModel.loadPosts(groupId: groupId, refresh: true)
+                }
             }
             .task {
-                if viewModel.posts.isEmpty {
-                    await viewModel.loadPosts(refresh: true)
+                if let groupId = currentGroupId, viewModel.posts.isEmpty {
+                    await viewModel.loadPosts(groupId: groupId, refresh: true)
+                }
+            }
+            .onChange(of: currentGroupId) { _, newGroupId in
+                if let groupId = newGroupId {
+                    Task {
+                        await viewModel.loadPosts(groupId: groupId, refresh: true)
+                    }
                 }
             }
             .onAppear {
-                if appState.feedNeedsRefresh {
+                if appState.feedNeedsRefresh, let groupId = currentGroupId {
                     Task {
-                        await viewModel.loadPosts(refresh: true)
+                        await viewModel.loadPosts(groupId: groupId, refresh: true)
                         appState.feedNeedsRefresh = false
                     }
                 }
+            }
+            .sheet(isPresented: $showGroupSwitcher) {
+                GroupSwitcherView()
             }
         }
     }
@@ -113,7 +142,9 @@ struct FeedView: View {
                         if post.userId == authService.currentUser?.id ||
                            authService.currentUser?.role == .admin {
                             Button(role: .destructive) {
-                                Task { await viewModel.deletePost(post) }
+                                if let groupId = currentGroupId {
+                                    Task { await viewModel.deletePost(post, groupId: groupId) }
+                                }
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
@@ -121,10 +152,10 @@ struct FeedView: View {
                     }
                 }
 
-                if viewModel.hasMorePages {
+                if viewModel.hasMorePages, let groupId = currentGroupId {
                     ProgressView()
                         .task {
-                            await viewModel.loadPosts()
+                            await viewModel.loadPosts(groupId: groupId)
                         }
                 }
             }
@@ -137,4 +168,5 @@ struct FeedView: View {
     FeedView()
         .environment(AuthService.shared)
         .environment(AppState.shared)
+        .environment(GroupService.shared)
 }

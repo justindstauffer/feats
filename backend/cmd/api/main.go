@@ -64,6 +64,7 @@ func main() {
 	// Initialize services
 	authService := services.NewAuthService(db, cfg)
 	userService := services.NewUserService(db, cfg)
+	betaInviteService := services.NewBetaInviteService(db)
 	groupService := services.NewGroupService(db, cfg)
 	postService := services.NewPostService(db, cfg)
 	activityService := services.NewActivityService(db)
@@ -75,9 +76,10 @@ func main() {
 	auditService := services.NewAuditService(db)
 
 	// Initialize handlers
-	authHandler := handlers.NewAuthHandler(authService, auditService, cfg)
+	authHandler := handlers.NewAuthHandler(authService, userService, betaInviteService, auditService, cfg)
 	userHandler := handlers.NewUserHandler(userService, auditService, authService)
 	groupHandler := handlers.NewGroupHandler(groupService, auditService)
+	betaInviteHandler := handlers.NewBetaInviteHandler(betaInviteService)
 	postHandler := handlers.NewPostHandler(postService, streakService, challengeService, goalService, auditService, cfg)
 	activityHandler := handlers.NewActivityHandler(activityService)
 	reactionHandler := handlers.NewReactionHandler(reactionService)
@@ -113,6 +115,7 @@ func main() {
 	auth := v1.Group("/auth")
 	auth.Use(rateLimiter.LoginRateLimit())
 	{
+		auth.POST("/register", authHandler.Register)
 		auth.POST("/login", authHandler.Login)
 		auth.POST("/refresh", authHandler.RefreshToken)
 		auth.POST("/password/reset-request", authHandler.RequestPasswordReset)
@@ -231,6 +234,12 @@ func main() {
 		admin.GET("/users", userHandler.ListUsers)
 		admin.DELETE("/users/:id", userHandler.DeleteUser)
 		admin.GET("/audit-logs", userHandler.GetAuditLogs)
+
+		// Beta invites
+		admin.POST("/beta-invites", betaInviteHandler.CreateBetaInvite)
+		admin.GET("/beta-invites", betaInviteHandler.ListBetaInvites)
+		admin.GET("/beta-invites/:id", betaInviteHandler.GetBetaInvite)
+		admin.DELETE("/beta-invites/:id", betaInviteHandler.DeleteBetaInvite)
 	}
 
 	// Image serving (protected)

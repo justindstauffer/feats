@@ -81,7 +81,7 @@ struct PostImageGrid: View {
     let images: [PostImage]
 
     var body: some View {
-        Group {
+        SwiftUI.Group {
             switch images.count {
             case 1:
                 singleImage(images[0])

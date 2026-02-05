@@ -7,24 +7,34 @@ class ProfileViewModel {
     var goals: [Goal] = []
     var isLoading = false
     var errorMessage: String?
+    var currentGroupId: String?
 
     private let apiClient = APIClient.shared
 
-    func loadData(userId: String) async {
+    func loadData(userId: String, groupId: String) async {
+        currentGroupId = groupId
         isLoading = true
 
         // Load streak
         do {
-            streak = try await apiClient.request(endpoint: "/users/\(userId)/streak")
+            streak = try await apiClient.groupRequest(
+                groupId: groupId,
+                endpoint: "/users/\(userId)/streak"
+            )
         } catch {
-            // Ignore
+            // Ignore - user may not have a streak yet
+            streak = nil
         }
 
         // Load goals
         do {
-            goals = try await apiClient.request(endpoint: "/users/\(userId)/goals")
+            goals = try await apiClient.groupRequest(
+                groupId: groupId,
+                endpoint: "/users/\(userId)/goals"
+            )
         } catch {
             // Ignore
+            goals = []
         }
 
         isLoading = false
@@ -33,10 +43,17 @@ class ProfileViewModel {
 
 struct ProfileView: View {
     @Environment(AuthService.self) private var authService
+    @Environment(GroupService.self) private var groupService
+    @Environment(AppState.self) private var appState
     @State private var viewModel = ProfileViewModel()
     @State private var showEditProfile = false
     @State private var showChangePassword = false
     @State private var showLogoutConfirm = false
+    @State private var showGroupSwitcher = false
+
+    private var currentGroupId: String? {
+        groupService.currentGroup?.id
+    }
 
     var body: some View {
         NavigationStack {
@@ -139,6 +156,17 @@ struct ProfileView: View {
                     }
                 }
 
+                // Admin section (only for admins)
+                if authService.currentUser?.role == .admin {
+                    Section("Admin") {
+                        NavigationLink {
+                            BetaInvitesView()
+                        } label: {
+                            Label("Beta Invites", systemImage: "ticket")
+                        }
+                    }
+                }
+
                 // Logout
                 Section {
                     Button(role: .destructive) {
@@ -148,15 +176,37 @@ struct ProfileView: View {
                     }
                 }
             }
-            .navigationTitle("Profile")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    GroupHeader {
+                        showGroupSwitcher = true
+                    }
+                }
+            }
             .refreshable {
-                if let userId = authService.currentUser?.id {
-                    await viewModel.loadData(userId: userId)
+                if let userId = authService.currentUser?.id, let groupId = currentGroupId {
+                    await viewModel.loadData(userId: userId, groupId: groupId)
                 }
             }
             .task {
-                if let userId = authService.currentUser?.id {
-                    await viewModel.loadData(userId: userId)
+                if let userId = authService.currentUser?.id, let groupId = currentGroupId {
+                    await viewModel.loadData(userId: userId, groupId: groupId)
+                }
+            }
+            .onChange(of: currentGroupId) { _, newGroupId in
+                if let userId = authService.currentUser?.id, let groupId = newGroupId {
+                    Task {
+                        await viewModel.loadData(userId: userId, groupId: groupId)
+                    }
+                }
+            }
+            .onAppear {
+                if appState.profileNeedsRefresh, let userId = authService.currentUser?.id, let groupId = currentGroupId {
+                    Task {
+                        await viewModel.loadData(userId: userId, groupId: groupId)
+                        appState.profileNeedsRefresh = false
+                    }
                 }
             }
             .sheet(isPresented: $showEditProfile) {
@@ -164,6 +214,9 @@ struct ProfileView: View {
             }
             .sheet(isPresented: $showChangePassword) {
                 ChangePasswordView()
+            }
+            .sheet(isPresented: $showGroupSwitcher) {
+                GroupSwitcherView()
             }
             .alert("Sign Out", isPresented: $showLogoutConfirm) {
                 Button("Cancel", role: .cancel) {}
@@ -216,4 +269,6 @@ struct GoalRow: View {
 #Preview {
     ProfileView()
         .environment(AuthService.shared)
+        .environment(GroupService.shared)
+        .environment(AppState.shared)
 }

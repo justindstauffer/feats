@@ -305,6 +305,70 @@ final class APIClient {
         }
     }
 
+    // MARK: - Group-Scoped Requests
+
+    func groupRequest<T: Codable>(
+        groupId: String,
+        endpoint: String,
+        method: HTTPMethod = .get,
+        authenticated: Bool = true
+    ) async throws -> T {
+        let groupEndpoint = "/groups/\(groupId)\(endpoint)"
+        return try await request(endpoint: groupEndpoint, method: method, authenticated: authenticated)
+    }
+
+    func groupRequest<T: Codable, B: Encodable>(
+        groupId: String,
+        endpoint: String,
+        method: HTTPMethod = .get,
+        body: B,
+        authenticated: Bool = true
+    ) async throws -> T {
+        let groupEndpoint = "/groups/\(groupId)\(endpoint)"
+        return try await request(endpoint: groupEndpoint, method: method, body: body, authenticated: authenticated)
+    }
+
+    func groupRequestPaginated<T: Codable>(
+        groupId: String,
+        endpoint: String,
+        page: Int = 1,
+        perPage: Int = 20
+    ) async throws -> (data: T, pagination: Pagination?) {
+        let groupEndpoint = "/groups/\(groupId)\(endpoint)"
+        return try await requestPaginated(endpoint: groupEndpoint, page: page, perPage: perPage)
+    }
+
+    func groupRequestMessage(
+        groupId: String,
+        endpoint: String,
+        method: HTTPMethod = .post,
+        authenticated: Bool = true
+    ) async throws -> String {
+        let groupEndpoint = "/groups/\(groupId)\(endpoint)"
+        return try await requestMessage(endpoint: groupEndpoint, method: method, authenticated: authenticated)
+    }
+
+    func groupRequestMessage<B: Encodable>(
+        groupId: String,
+        endpoint: String,
+        method: HTTPMethod = .post,
+        body: B,
+        authenticated: Bool = true
+    ) async throws -> String {
+        let groupEndpoint = "/groups/\(groupId)\(endpoint)"
+        return try await requestMessage(endpoint: groupEndpoint, method: method, body: body, authenticated: authenticated)
+    }
+
+    func groupUploadImage(
+        groupId: String,
+        endpoint: String,
+        imageData: Data,
+        filename: String = "image.jpg"
+    ) async throws -> PostImage {
+        let groupEndpoint = "/groups/\(groupId)\(endpoint)"
+        return try await uploadImage(to: groupEndpoint, imageData: imageData, filename: filename)
+    }
+
     // MARK: - Image URL
 
     func imageURL(for imageId: String) -> URL? {

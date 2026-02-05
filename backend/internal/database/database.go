@@ -47,6 +47,7 @@ func Migrate(db *gorm.DB) error {
 		&models.RefreshToken{},
 		&models.PasswordHistory{},
 		&models.PasswordResetToken{},
+		&models.BetaInvite{},
 		// Groups (must come before models that reference it)
 		&models.Group{},
 		&models.GroupMember{},
@@ -96,6 +97,8 @@ func CreateIndexes(db *gorm.DB) error {
 		"CREATE INDEX IF NOT EXISTS idx_group_members_user_active ON group_members(user_id) WHERE left_at IS NULL",
 		"CREATE INDEX IF NOT EXISTS idx_group_members_group_active ON group_members(group_id) WHERE left_at IS NULL",
 		"CREATE INDEX IF NOT EXISTS idx_group_invites_code_valid ON group_invites(code) WHERE use_count < max_uses",
+		// Beta invite indexes
+		"CREATE INDEX IF NOT EXISTS idx_beta_invites_code_valid ON beta_invites(code) WHERE use_count < max_uses",
 	}
 
 	for _, idx := range indexes {

@@ -28,10 +28,40 @@ final class AuthService {
             let user: User = try await apiClient.request(endpoint: "/users/me")
             self.currentUser = user
             self.isAuthenticated = true
+
+            // Load user's groups
+            await GroupService.shared.loadGroups()
         } catch {
             // Token invalid, clear everything
             logout()
         }
+    }
+
+    // MARK: - Register
+
+    func register(email: String, password: String, name: String, inviteCode: String) async throws {
+        isLoading = true
+        defer { isLoading = false }
+
+        let request = RegisterRequest(email: email, password: password, name: name, inviteCode: inviteCode)
+
+        let response: LoginResponse = try await apiClient.request(
+            endpoint: "/auth/register",
+            method: .post,
+            body: request,
+            authenticated: false
+        )
+
+        // Save tokens
+        apiClient.setAccessToken(response.tokens.accessToken, expiresAt: response.tokens.expiresAt)
+        try keychain.saveRefreshToken(response.tokens.refreshToken)
+
+        // Set user
+        self.currentUser = response.user
+        self.isAuthenticated = true
+
+        // Load user's groups
+        await GroupService.shared.loadGroups()
     }
 
     // MARK: - Login
@@ -56,6 +86,9 @@ final class AuthService {
         // Set user
         self.currentUser = response.user
         self.isAuthenticated = true
+
+        // Load user's groups
+        await GroupService.shared.loadGroups()
     }
 
     // MARK: - Logout
@@ -69,6 +102,9 @@ final class AuthService {
         apiClient.clearTokens()
         currentUser = nil
         isAuthenticated = false
+
+        // Clear groups
+        GroupService.shared.clear()
     }
 
     // MARK: - Password

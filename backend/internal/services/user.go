@@ -97,6 +97,57 @@ func (s *UserService) CreateUser(input CreateUserInput, authService *AuthService
 	return &user, nil
 }
 
+// RegisterUser creates a new user via self-registration (requires beta invite)
+func (s *UserService) RegisterUser(email, password, name string, authService *AuthService) (*models.User, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+
+	// Check if email exists
+	var existing models.User
+	if err := s.db.Where("email = ?", email).First(&existing).Error; err == nil {
+		return nil, ErrEmailExists
+	}
+
+	// Validate password strength
+	if err := authService.ValidatePassword(password); err != nil {
+		return nil, err
+	}
+
+	// Hash password
+	passwordHash, err := authService.HashPassword(password)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	user := models.User{
+		ID:                  uuid.New().String(),
+		Email:               email,
+		PasswordHash:        passwordHash,
+		Name:                strings.TrimSpace(name),
+		Role:                models.RoleUser, // Self-registered users are always regular users
+		PasswordChangedAt:   now,
+		ForcePasswordChange: false, // User set their own password
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	}
+
+	if err := s.db.Create(&user).Error; err != nil {
+		return nil, err
+	}
+
+	// Create initial streak record
+	streak := models.Streak{
+		ID:            uuid.New().String(),
+		UserID:        user.ID,
+		CurrentStreak: 0,
+		LongestStreak: 0,
+		UpdatedAt:     now,
+	}
+	s.db.Create(&streak)
+
+	return &user, nil
+}
+
 // GetUserByID retrieves a user by ID
 func (s *UserService) GetUserByID(id string) (*models.User, error) {
 	var user models.User
