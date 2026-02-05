@@ -20,7 +20,9 @@ func NewActivityHandler(activityService *services.ActivityService) *ActivityHand
 }
 
 func (h *ActivityHandler) ListActivities(c *gin.Context) {
-	activities, err := h.activityService.ListActivities()
+	groupID, _ := middleware.GetCurrentGroupID(c)
+
+	activities, err := h.activityService.ListActivities(groupID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse(
 			models.ErrCodeInternalError,
@@ -33,6 +35,8 @@ func (h *ActivityHandler) ListActivities(c *gin.Context) {
 }
 
 func (h *ActivityHandler) CreateActivity(c *gin.Context) {
+	groupID, _ := middleware.GetCurrentGroupID(c)
+
 	var input services.CreateActivityInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse(
@@ -44,7 +48,7 @@ func (h *ActivityHandler) CreateActivity(c *gin.Context) {
 
 	userID, _ := middleware.GetCurrentUserID(c)
 
-	activity, err := h.activityService.CreateActivity(input, userID)
+	activity, err := h.activityService.CreateActivity(groupID, input, userID)
 	if err != nil {
 		if err == services.ErrActivityExists {
 			c.JSON(http.StatusConflict, models.ErrorResponse(
@@ -64,11 +68,12 @@ func (h *ActivityHandler) CreateActivity(c *gin.Context) {
 }
 
 func (h *ActivityHandler) DeleteActivity(c *gin.Context) {
+	groupID, _ := middleware.GetCurrentGroupID(c)
 	activityID := c.Param("id")
 	userID, _ := middleware.GetCurrentUserID(c)
 	isAdmin := middleware.IsAdmin(c)
 
-	err := h.activityService.DeleteActivity(activityID, userID, isAdmin)
+	err := h.activityService.DeleteActivity(groupID, activityID, userID, isAdmin)
 	if err != nil {
 		switch err {
 		case services.ErrActivityNotFound:

@@ -26,8 +26,14 @@ type AddReactionInput struct {
 	ReactionType int `json:"reaction_type" binding:"required"`
 }
 
-// GetReactions returns all reactions for a post with summary
-func (s *ReactionService) GetReactions(postID string) ([]models.ReactionSummary, []models.Reaction, error) {
+// GetReactions returns all reactions for a post with summary (validates post belongs to group)
+func (s *ReactionService) GetReactions(groupID, postID string) ([]models.ReactionSummary, []models.Reaction, error) {
+	// Verify post belongs to group
+	var post models.Post
+	if err := s.db.First(&post, "id = ? AND group_id = ?", postID, groupID).Error; err != nil {
+		return nil, nil, ErrPostNotFound
+	}
+
 	var reactions []models.Reaction
 	if err := s.db.
 		Preload("User").
@@ -54,10 +60,16 @@ func (s *ReactionService) GetReactions(postID string) ([]models.ReactionSummary,
 	return summaries, reactions, nil
 }
 
-// AddReaction adds or updates a reaction
-func (s *ReactionService) AddReaction(postID, userID string, reactionType models.ReactionType) (*models.Reaction, bool, error) {
+// AddReaction adds or updates a reaction (validates post belongs to group)
+func (s *ReactionService) AddReaction(groupID, postID, userID string, reactionType models.ReactionType) (*models.Reaction, bool, error) {
 	if !models.IsValidReactionType(reactionType) {
 		return nil, false, ErrInvalidReaction
+	}
+
+	// Verify post belongs to group
+	var post models.Post
+	if err := s.db.First(&post, "id = ? AND group_id = ?", postID, groupID).Error; err != nil {
+		return nil, false, ErrPostNotFound
 	}
 
 	// Check if user already reacted
@@ -100,8 +112,14 @@ func (s *ReactionService) AddReaction(postID, userID string, reactionType models
 	return &reaction, true, nil
 }
 
-// RemoveReaction removes a user's reaction from a post
-func (s *ReactionService) RemoveReaction(postID, userID string) error {
+// RemoveReaction removes a user's reaction from a post (validates post belongs to group)
+func (s *ReactionService) RemoveReaction(groupID, postID, userID string) error {
+	// Verify post belongs to group
+	var post models.Post
+	if err := s.db.First(&post, "id = ? AND group_id = ?", postID, groupID).Error; err != nil {
+		return ErrPostNotFound
+	}
+
 	result := s.db.Where("post_id = ? AND user_id = ?", postID, userID).Delete(&models.Reaction{})
 	if result.RowsAffected == 0 {
 		return ErrReactionNotFound

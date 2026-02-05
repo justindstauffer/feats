@@ -59,17 +59,18 @@ type UpdatePostInput struct {
 	Description *string `json:"description"`
 }
 
-// ListPosts returns paginated posts
-func (s *PostService) ListPosts(page, perPage int) ([]models.Post, int64, error) {
+// ListPosts returns paginated posts for a group
+func (s *PostService) ListPosts(groupID string, page, perPage int) ([]models.Post, int64, error) {
 	var posts []models.Post
 	var total int64
 
-	if err := s.db.Model(&models.Post{}).Count(&total).Error; err != nil {
+	if err := s.db.Model(&models.Post{}).Where("group_id = ?", groupID).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
 	offset := (page - 1) * perPage
 	if err := s.db.
+		Where("group_id = ?", groupID).
 		Preload("User").
 		Preload("ActivityType").
 		Preload("Images", func(db *gorm.DB) *gorm.DB {
@@ -86,7 +87,7 @@ func (s *PostService) ListPosts(page, perPage int) ([]models.Post, int64, error)
 }
 
 // GetPostByID retrieves a post by ID with all relationships
-func (s *PostService) GetPostByID(id string) (*models.Post, error) {
+func (s *PostService) GetPostByID(groupID, id string) (*models.Post, error) {
 	var post models.Post
 	if err := s.db.
 		Preload("User").
@@ -96,7 +97,7 @@ func (s *PostService) GetPostByID(id string) (*models.Post, error) {
 		}).
 		Preload("Reactions").
 		Preload("Reactions.User").
-		First(&post, "id = ?", id).Error; err != nil {
+		First(&post, "id = ? AND group_id = ?", id, groupID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrPostNotFound
 		}
@@ -106,10 +107,10 @@ func (s *PostService) GetPostByID(id string) (*models.Post, error) {
 }
 
 // CreatePost creates a new post
-func (s *PostService) CreatePost(input CreatePostInput, userID string) (*models.Post, error) {
-	// Verify activity type exists
+func (s *PostService) CreatePost(groupID string, input CreatePostInput, userID string) (*models.Post, error) {
+	// Verify activity type exists (system-wide or group-specific)
 	var activityType models.ActivityType
-	if err := s.db.First(&activityType, "id = ?", input.ActivityTypeID).Error; err != nil {
+	if err := s.db.First(&activityType, "id = ? AND (group_id IS NULL OR group_id = ?)", input.ActivityTypeID, groupID).Error; err != nil {
 		return nil, errors.New("invalid activity type")
 	}
 
@@ -123,6 +124,7 @@ func (s *PostService) CreatePost(input CreatePostInput, userID string) (*models.
 	now := time.Now()
 	post := models.Post{
 		ID:             uuid.New().String(),
+		GroupID:        groupID,
 		UserID:         userID,
 		ActivityTypeID: input.ActivityTypeID,
 		Description:    description,
@@ -135,13 +137,13 @@ func (s *PostService) CreatePost(input CreatePostInput, userID string) (*models.
 	}
 
 	// Reload with relationships
-	return s.GetPostByID(post.ID)
+	return s.GetPostByID(groupID, post.ID)
 }
 
 // UpdatePost updates a post
-func (s *PostService) UpdatePost(id string, input UpdatePostInput, userID string, isAdmin bool) (*models.Post, error) {
+func (s *PostService) UpdatePost(groupID, id string, input UpdatePostInput, userID string, isAdmin bool) (*models.Post, error) {
 	var post models.Post
-	if err := s.db.First(&post, "id = ?", id).Error; err != nil {
+	if err := s.db.First(&post, "id = ? AND group_id = ?", id, groupID).Error; err != nil {
 		return nil, ErrPostNotFound
 	}
 
@@ -160,13 +162,13 @@ func (s *PostService) UpdatePost(id string, input UpdatePostInput, userID string
 		return nil, err
 	}
 
-	return s.GetPostByID(post.ID)
+	return s.GetPostByID(groupID, post.ID)
 }
 
 // DeletePost soft-deletes a post
-func (s *PostService) DeletePost(id, userID string, isAdmin bool) error {
+func (s *PostService) DeletePost(groupID, id, userID string, isAdmin bool) error {
 	var post models.Post
-	if err := s.db.First(&post, "id = ?", id).Error; err != nil {
+	if err := s.db.First(&post, "id = ? AND group_id = ?", id, groupID).Error; err != nil {
 		return ErrPostNotFound
 	}
 
@@ -179,9 +181,9 @@ func (s *PostService) DeletePost(id, userID string, isAdmin bool) error {
 }
 
 // UploadImage uploads an image to a post
-func (s *PostService) UploadImage(postID, userID string, isAdmin bool, file io.Reader, filename string) (*models.PostImage, error) {
+func (s *PostService) UploadImage(groupID, postID, userID string, isAdmin bool, file io.Reader, filename string) (*models.PostImage, error) {
 	var post models.Post
-	if err := s.db.Preload("Images").First(&post, "id = ?", postID).Error; err != nil {
+	if err := s.db.Preload("Images").First(&post, "id = ? AND group_id = ?", postID, groupID).Error; err != nil {
 		return nil, ErrPostNotFound
 	}
 
@@ -270,9 +272,9 @@ func (s *PostService) UploadImage(postID, userID string, isAdmin bool, file io.R
 }
 
 // DeleteImage removes an image from a post
-func (s *PostService) DeleteImage(postID, imageID, userID string, isAdmin bool) error {
+func (s *PostService) DeleteImage(groupID, postID, imageID, userID string, isAdmin bool) error {
 	var post models.Post
-	if err := s.db.First(&post, "id = ?", postID).Error; err != nil {
+	if err := s.db.First(&post, "id = ? AND group_id = ?", postID, groupID).Error; err != nil {
 		return ErrPostNotFound
 	}
 
@@ -304,23 +306,23 @@ func (s *PostService) GetImage(imageID string) (*models.PostImage, error) {
 	return &image, nil
 }
 
-// GetUserPostsForDate returns posts by a user on a specific date
-func (s *PostService) GetUserPostsForDate(userID string, date time.Time, timezone *time.Location) ([]models.Post, error) {
+// GetUserPostsForDate returns posts by a user on a specific date within a group
+func (s *PostService) GetUserPostsForDate(groupID, userID string, date time.Time, timezone *time.Location) ([]models.Post, error) {
 	startOfDay := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, timezone)
 	endOfDay := startOfDay.Add(24 * time.Hour)
 
 	var posts []models.Post
 	if err := s.db.
-		Where("user_id = ? AND created_at >= ? AND created_at < ?", userID, startOfDay, endOfDay).
+		Where("group_id = ? AND user_id = ? AND created_at >= ? AND created_at < ?", groupID, userID, startOfDay, endOfDay).
 		Find(&posts).Error; err != nil {
 		return nil, err
 	}
 	return posts, nil
 }
 
-// GetUserPostsInPeriod returns posts by a user in a time period
-func (s *PostService) GetUserPostsInPeriod(userID string, start, end time.Time, activityTypeID *string) ([]models.Post, error) {
-	query := s.db.Where("user_id = ? AND created_at >= ? AND created_at < ?", userID, start, end)
+// GetUserPostsInPeriod returns posts by a user in a time period within a group
+func (s *PostService) GetUserPostsInPeriod(groupID, userID string, start, end time.Time, activityTypeID *string) ([]models.Post, error) {
+	query := s.db.Where("group_id = ? AND user_id = ? AND created_at >= ? AND created_at < ?", groupID, userID, start, end)
 
 	if activityTypeID != nil {
 		query = query.Where("activity_type_id = ?", *activityTypeID)
@@ -376,10 +378,10 @@ func (s *PostService) GetImagePath(imageID string) (string, error) {
 }
 
 // CreateChallengeCompletionPost creates a post announcing challenge completion
-func (s *PostService) CreateChallengeCompletionPost(userID string, challengeTitle string) (*models.Post, error) {
-	// Find the Achievement activity type
+func (s *PostService) CreateChallengeCompletionPost(groupID, userID string, challengeTitle string) (*models.Post, error) {
+	// Find the Achievement activity type (system-wide)
 	var achievementActivity models.ActivityType
-	if err := s.db.Where("name = ?", "Achievement").First(&achievementActivity).Error; err != nil {
+	if err := s.db.Where("name = ? AND group_id IS NULL", "Achievement").First(&achievementActivity).Error; err != nil {
 		return nil, fmt.Errorf("achievement activity type not found")
 	}
 
@@ -388,6 +390,7 @@ func (s *PostService) CreateChallengeCompletionPost(userID string, challengeTitl
 	now := time.Now()
 	post := models.Post{
 		ID:             uuid.New().String(),
+		GroupID:        groupID,
 		UserID:         userID,
 		ActivityTypeID: achievementActivity.ID,
 		Description:    &description,
@@ -399,5 +402,5 @@ func (s *PostService) CreateChallengeCompletionPost(userID string, challengeTitl
 		return nil, err
 	}
 
-	return s.GetPostByID(post.ID)
+	return s.GetPostByID(groupID, post.ID)
 }

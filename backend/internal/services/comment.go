@@ -35,8 +35,14 @@ type UpdateCommentInput struct {
 	Content string `json:"content" binding:"required"`
 }
 
-// GetComments returns threaded comments for a post
-func (s *CommentService) GetComments(postID string) ([]models.Comment, error) {
+// GetComments returns threaded comments for a post (validates post belongs to group)
+func (s *CommentService) GetComments(groupID, postID string) ([]models.Comment, error) {
+	// Verify post belongs to group
+	var post models.Post
+	if err := s.db.First(&post, "id = ? AND group_id = ?", postID, groupID).Error; err != nil {
+		return nil, ErrPostNotFound
+	}
+
 	var comments []models.Comment
 
 	// Get top-level comments first
@@ -55,16 +61,16 @@ func (s *CommentService) GetComments(postID string) ([]models.Comment, error) {
 	return comments, nil
 }
 
-// CreateComment creates a new comment or reply
-func (s *CommentService) CreateComment(postID, userID string, input CreateCommentInput) (*models.Comment, error) {
+// CreateComment creates a new comment or reply (validates post belongs to group)
+func (s *CommentService) CreateComment(groupID, postID, userID string, input CreateCommentInput) (*models.Comment, error) {
 	content := sanitizeComment(input.Content)
 	if len(content) > MaxCommentLength {
 		return nil, ErrCommentTooLong
 	}
 
-	// Verify post exists
+	// Verify post exists and belongs to group
 	var post models.Post
-	if err := s.db.First(&post, "id = ?", postID).Error; err != nil {
+	if err := s.db.First(&post, "id = ? AND group_id = ?", postID, groupID).Error; err != nil {
 		return nil, ErrPostNotFound
 	}
 
@@ -97,10 +103,16 @@ func (s *CommentService) CreateComment(postID, userID string, input CreateCommen
 	return &comment, nil
 }
 
-// UpdateComment updates a comment's content
-func (s *CommentService) UpdateComment(commentID, userID string, isAdmin bool, input UpdateCommentInput) (*models.Comment, error) {
+// UpdateComment updates a comment's content (validates comment's post belongs to group)
+func (s *CommentService) UpdateComment(groupID, commentID, userID string, isAdmin bool, input UpdateCommentInput) (*models.Comment, error) {
 	var comment models.Comment
 	if err := s.db.First(&comment, "id = ?", commentID).Error; err != nil {
+		return nil, ErrCommentNotFound
+	}
+
+	// Verify the comment's post belongs to the group
+	var post models.Post
+	if err := s.db.First(&post, "id = ? AND group_id = ?", comment.PostID, groupID).Error; err != nil {
 		return nil, ErrCommentNotFound
 	}
 
@@ -127,10 +139,16 @@ func (s *CommentService) UpdateComment(commentID, userID string, isAdmin bool, i
 	return &comment, nil
 }
 
-// DeleteComment soft-deletes a comment
-func (s *CommentService) DeleteComment(commentID, userID string, isAdmin bool) error {
+// DeleteComment soft-deletes a comment (validates comment's post belongs to group)
+func (s *CommentService) DeleteComment(groupID, commentID, userID string, isAdmin bool) error {
 	var comment models.Comment
 	if err := s.db.First(&comment, "id = ?", commentID).Error; err != nil {
+		return ErrCommentNotFound
+	}
+
+	// Verify the comment's post belongs to the group
+	var post models.Post
+	if err := s.db.First(&post, "id = ? AND group_id = ?", comment.PostID, groupID).Error; err != nil {
 		return ErrCommentNotFound
 	}
 

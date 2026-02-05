@@ -64,6 +64,7 @@ func main() {
 	// Initialize services
 	authService := services.NewAuthService(db, cfg)
 	userService := services.NewUserService(db, cfg)
+	groupService := services.NewGroupService(db, cfg)
 	postService := services.NewPostService(db, cfg)
 	activityService := services.NewActivityService(db)
 	reactionService := services.NewReactionService(db)
@@ -76,6 +77,7 @@ func main() {
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(authService, auditService, cfg)
 	userHandler := handlers.NewUserHandler(userService, auditService, authService)
+	groupHandler := handlers.NewGroupHandler(groupService, auditService)
 	postHandler := handlers.NewPostHandler(postService, streakService, challengeService, goalService, auditService, cfg)
 	activityHandler := handlers.NewActivityHandler(activityService)
 	reactionHandler := handlers.NewReactionHandler(reactionService)
@@ -86,6 +88,7 @@ func main() {
 
 	// Initialize middleware
 	authMiddleware := middleware.NewAuthMiddleware(authService, cfg)
+	groupMiddleware := middleware.NewGroupMiddleware(groupService)
 	rateLimiter := middleware.NewRateLimiter(cfg)
 	securityMiddleware := middleware.NewSecurityMiddleware()
 
@@ -116,7 +119,7 @@ func main() {
 		auth.POST("/password/reset", authHandler.ResetPassword)
 	}
 
-	// Protected routes
+	// Protected routes (user-level, not group-specific)
 	protected := v1.Group("")
 	protected.Use(authMiddleware.Authenticate())
 	protected.Use(rateLimiter.APIRateLimit())
@@ -125,60 +128,101 @@ func main() {
 		protected.POST("/auth/logout", authHandler.Logout)
 		protected.POST("/auth/password/change", authHandler.ChangePassword)
 
-		// Users
+		// Users (profile management - not group-scoped)
 		protected.GET("/users/me", userHandler.GetCurrentUser)
 		protected.PUT("/users/me", userHandler.UpdateCurrentUser)
 		protected.GET("/users/:id", userHandler.GetUser)
-		protected.GET("/users/:id/streak", streakHandler.GetUserStreak)
-		protected.GET("/users/:id/goals", goalHandler.GetUserGoals)
-
-		// Activities
-		protected.GET("/activities", activityHandler.ListActivities)
-		protected.POST("/activities", activityHandler.CreateActivity)
-		protected.DELETE("/activities/:id", activityHandler.DeleteActivity)
-
-		// Posts
-		protected.GET("/posts", postHandler.ListPosts)
-		protected.POST("/posts", rateLimiter.PostRateLimit(), postHandler.CreatePost)
-		protected.GET("/posts/:id", postHandler.GetPost)
-		protected.PUT("/posts/:id", postHandler.UpdatePost)
-		protected.DELETE("/posts/:id", postHandler.DeletePost)
-		protected.POST("/posts/:id/images", rateLimiter.UploadRateLimit(), postHandler.UploadImage)
-		protected.DELETE("/posts/:id/images/:image_id", postHandler.DeleteImage)
-
-		// Reactions
-		protected.GET("/posts/:id/reactions", reactionHandler.GetReactions)
-		protected.POST("/posts/:id/reactions", reactionHandler.AddReaction)
-		protected.DELETE("/posts/:id/reactions", reactionHandler.RemoveReaction)
-
-		// Comments
-		protected.GET("/posts/:id/comments", commentHandler.GetComments)
-		protected.POST("/posts/:id/comments", commentHandler.CreateComment)
-		protected.PUT("/comments/:id", commentHandler.UpdateComment)
-		protected.DELETE("/comments/:id", commentHandler.DeleteComment)
-
-		// Streaks
-		protected.GET("/streaks/leaderboard", streakHandler.GetLeaderboard)
-
-		// Challenges
-		protected.GET("/challenges", challengeHandler.ListChallenges)
-		protected.POST("/challenges", challengeHandler.CreateChallenge)
-		protected.GET("/challenges/:id", challengeHandler.GetChallenge)
-		protected.POST("/challenges/:id/join", challengeHandler.JoinChallenge)
-		protected.DELETE("/challenges/:id/leave", challengeHandler.LeaveChallenge)
-		protected.DELETE("/challenges/:id", challengeHandler.DeleteChallenge)
-
-		// Goals
-		protected.POST("/goals", goalHandler.CreateGoal)
-		protected.PUT("/goals/:id", goalHandler.UpdateGoal)
-		protected.DELETE("/goals/:id", goalHandler.DeleteGoal)
 
 		// Device tokens (for push notifications)
 		protected.POST("/devices", authHandler.RegisterDevice)
 		protected.DELETE("/devices/:token", authHandler.UnregisterDevice)
+
+		// Invite redemption (outside group context)
+		protected.POST("/invites/redeem", rateLimiter.InviteRedeemRateLimit(), groupHandler.RedeemInvite)
 	}
 
-	// Admin routes
+	// Group management routes (requires authentication but not group membership)
+	groups := v1.Group("/groups")
+	groups.Use(authMiddleware.Authenticate())
+	groups.Use(rateLimiter.APIRateLimit())
+	{
+		groups.POST("", groupHandler.CreateGroup)
+		groups.GET("", groupHandler.ListGroups)
+	}
+
+	// Group-scoped routes (requires group membership)
+	group := v1.Group("/groups/:gid")
+	group.Use(authMiddleware.Authenticate())
+	group.Use(groupMiddleware.RequireGroupMember())
+	group.Use(rateLimiter.APIRateLimit())
+	{
+		// Group info
+		group.GET("", groupHandler.GetGroup)
+		group.POST("/leave", groupHandler.LeaveGroup)
+		group.GET("/members", groupHandler.ListMembers)
+
+		// User data within group context
+		group.GET("/users/:id/streak", streakHandler.GetUserStreak)
+		group.GET("/users/:id/goals", goalHandler.GetUserGoals)
+
+		// Activities (system-wide + group custom)
+		group.GET("/activities", activityHandler.ListActivities)
+		group.POST("/activities", activityHandler.CreateActivity)
+		group.DELETE("/activities/:id", activityHandler.DeleteActivity)
+
+		// Posts
+		group.GET("/posts", postHandler.ListPosts)
+		group.POST("/posts", rateLimiter.PostRateLimit(), postHandler.CreatePost)
+		group.GET("/posts/:id", postHandler.GetPost)
+		group.PUT("/posts/:id", postHandler.UpdatePost)
+		group.DELETE("/posts/:id", postHandler.DeletePost)
+		group.POST("/posts/:id/images", rateLimiter.UploadRateLimit(), postHandler.UploadImage)
+		group.DELETE("/posts/:id/images/:image_id", postHandler.DeleteImage)
+
+		// Reactions
+		group.GET("/posts/:id/reactions", reactionHandler.GetReactions)
+		group.POST("/posts/:id/reactions", reactionHandler.AddReaction)
+		group.DELETE("/posts/:id/reactions", reactionHandler.RemoveReaction)
+
+		// Comments
+		group.GET("/posts/:id/comments", commentHandler.GetComments)
+		group.POST("/posts/:id/comments", commentHandler.CreateComment)
+		group.PUT("/comments/:id", commentHandler.UpdateComment)
+		group.DELETE("/comments/:id", commentHandler.DeleteComment)
+
+		// Streaks
+		group.GET("/streaks/leaderboard", streakHandler.GetLeaderboard)
+
+		// Challenges
+		group.GET("/challenges", challengeHandler.ListChallenges)
+		group.POST("/challenges", challengeHandler.CreateChallenge)
+		group.GET("/challenges/:id", challengeHandler.GetChallenge)
+		group.POST("/challenges/:id/join", challengeHandler.JoinChallenge)
+		group.DELETE("/challenges/:id/leave", challengeHandler.LeaveChallenge)
+		group.DELETE("/challenges/:id", challengeHandler.DeleteChallenge)
+
+		// Goals
+		group.POST("/goals", goalHandler.CreateGoal)
+		group.PUT("/goals/:id", goalHandler.UpdateGoal)
+		group.DELETE("/goals/:id", goalHandler.DeleteGoal)
+	}
+
+	// Group admin routes (requires group admin)
+	groupAdmin := v1.Group("/groups/:gid")
+	groupAdmin.Use(authMiddleware.Authenticate())
+	groupAdmin.Use(groupMiddleware.RequireGroupAdmin())
+	groupAdmin.Use(rateLimiter.APIRateLimit())
+	{
+		groupAdmin.PUT("", groupHandler.UpdateGroup)
+		groupAdmin.DELETE("", groupHandler.DeleteGroup)
+		groupAdmin.PUT("/members/:uid", groupHandler.UpdateMember)
+		groupAdmin.DELETE("/members/:uid", groupHandler.RemoveMember)
+		groupAdmin.POST("/invites", groupHandler.CreateInvite)
+		groupAdmin.GET("/invites", groupHandler.ListInvites)
+		groupAdmin.DELETE("/invites/:iid", groupHandler.RevokeInvite)
+	}
+
+	// System admin routes
 	admin := v1.Group("/admin")
 	admin.Use(authMiddleware.Authenticate())
 	admin.Use(authMiddleware.RequireAdmin())

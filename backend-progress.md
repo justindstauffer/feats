@@ -29,6 +29,7 @@ backend/
 │   ├── handlers/
 │   │   ├── auth.go              # Login, logout, password reset
 │   │   ├── user.go              # User CRUD, admin functions
+│   │   ├── group.go             # Group management, invites, membership
 │   │   ├── post.go              # Posts and image uploads
 │   │   ├── activity.go          # Activity types
 │   │   ├── reaction.go          # Post reactions
@@ -38,6 +39,7 @@ backend/
 │   │   └── goal.go              # Personal goals
 │   ├── middleware/
 │   │   ├── auth.go              # JWT validation, role checking
+│   │   ├── group.go             # Group membership/admin validation
 │   │   ├── security.go          # Security headers
 │   │   ├── ratelimit.go         # Token bucket rate limiting
 │   │   ├── logger.go            # Request logging
@@ -45,6 +47,7 @@ backend/
 │   ├── models/
 │   │   ├── user.go              # User model with security fields
 │   │   ├── auth.go              # RefreshToken, PasswordHistory, ResetToken
+│   │   ├── group.go             # Group, GroupMember, GroupInvite
 │   │   ├── activity.go          # ActivityType with core types
 │   │   ├── post.go              # Post and PostImage
 │   │   ├── reaction.go          # Reaction with 5 types
@@ -58,6 +61,7 @@ backend/
 │   ├── services/
 │   │   ├── auth.go              # Authentication logic, JWT, password validation
 │   │   ├── user.go              # User management
+│   │   ├── group.go             # Group CRUD, membership, invites
 │   │   ├── audit.go             # Security event logging
 │   │   ├── activity.go          # Activity type management
 │   │   ├── post.go              # Post CRUD, image processing
@@ -138,6 +142,19 @@ backend/
 - [x] Automatic progress tracking
 - [x] Period reset logic
 
+### Multi-Tenancy / Groups (Feb 2026)
+- [x] Group model with name and description
+- [x] Group membership with admin/member roles
+- [x] Invite code system (XXXX-XXXX-XXXX format)
+- [x] Invite expiration and max uses
+- [x] Rate limiting on invite redemption (brute-force protection)
+- [x] Users can belong to multiple groups
+- [x] Posts, challenges, goals, streaks are group-scoped
+- [x] Custom activity types are group-scoped
+- [x] Leaderboard is per-group
+- [x] Soft-delete membership (preserves historical posts)
+- [x] Group admin can manage members and invites
+
 ## API Endpoints
 
 ### Public
@@ -157,38 +174,63 @@ backend/
 | GET | `/api/v1/users/me` | Get current user |
 | PUT | `/api/v1/users/me` | Update current user |
 | GET | `/api/v1/users/:id` | Get user |
-| GET | `/api/v1/users/:id/streak` | Get user streak |
-| GET | `/api/v1/users/:id/goals` | Get user goals |
-| GET | `/api/v1/activities` | List activities |
-| POST | `/api/v1/activities` | Create activity |
-| DELETE | `/api/v1/activities/:id` | Delete activity |
-| GET | `/api/v1/posts` | List posts |
-| POST | `/api/v1/posts` | Create post |
-| GET | `/api/v1/posts/:id` | Get post |
-| PUT | `/api/v1/posts/:id` | Update post |
-| DELETE | `/api/v1/posts/:id` | Delete post |
-| POST | `/api/v1/posts/:id/images` | Upload image |
-| DELETE | `/api/v1/posts/:id/images/:image_id` | Delete image |
-| GET | `/api/v1/posts/:id/reactions` | Get reactions |
-| POST | `/api/v1/posts/:id/reactions` | Add reaction |
-| DELETE | `/api/v1/posts/:id/reactions` | Remove reaction |
-| GET | `/api/v1/posts/:id/comments` | Get comments |
-| POST | `/api/v1/posts/:id/comments` | Create comment |
-| PUT | `/api/v1/comments/:id` | Update comment |
-| DELETE | `/api/v1/comments/:id` | Delete comment |
-| GET | `/api/v1/streaks/leaderboard` | Get leaderboard |
-| GET | `/api/v1/challenges` | List challenges |
-| POST | `/api/v1/challenges` | Create challenge |
-| GET | `/api/v1/challenges/:id` | Get challenge |
-| POST | `/api/v1/challenges/:id/join` | Join challenge |
-| DELETE | `/api/v1/challenges/:id/leave` | Leave challenge |
-| DELETE | `/api/v1/challenges/:id` | Delete challenge |
-| POST | `/api/v1/goals` | Create goal |
-| PUT | `/api/v1/goals/:id` | Update goal |
-| DELETE | `/api/v1/goals/:id` | Delete goal |
 | POST | `/api/v1/devices` | Register device token |
 | DELETE | `/api/v1/devices/:token` | Unregister device |
+| POST | `/api/v1/invites/redeem` | Redeem invite code |
 | GET | `/images/:id` | Serve image |
+
+### Group Management (requires Bearer token)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/groups` | Create group |
+| GET | `/api/v1/groups` | List user's groups |
+
+### Group-Scoped Routes (requires group membership)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/groups/:gid` | Get group |
+| POST | `/api/v1/groups/:gid/leave` | Leave group |
+| GET | `/api/v1/groups/:gid/members` | List members |
+| GET | `/api/v1/groups/:gid/users/:id/streak` | Get user streak |
+| GET | `/api/v1/groups/:gid/users/:id/goals` | Get user goals |
+| GET | `/api/v1/groups/:gid/activities` | List activities |
+| POST | `/api/v1/groups/:gid/activities` | Create activity |
+| DELETE | `/api/v1/groups/:gid/activities/:id` | Delete activity |
+| GET | `/api/v1/groups/:gid/posts` | List posts |
+| POST | `/api/v1/groups/:gid/posts` | Create post |
+| GET | `/api/v1/groups/:gid/posts/:id` | Get post |
+| PUT | `/api/v1/groups/:gid/posts/:id` | Update post |
+| DELETE | `/api/v1/groups/:gid/posts/:id` | Delete post |
+| POST | `/api/v1/groups/:gid/posts/:id/images` | Upload image |
+| DELETE | `/api/v1/groups/:gid/posts/:id/images/:image_id` | Delete image |
+| GET | `/api/v1/groups/:gid/posts/:id/reactions` | Get reactions |
+| POST | `/api/v1/groups/:gid/posts/:id/reactions` | Add reaction |
+| DELETE | `/api/v1/groups/:gid/posts/:id/reactions` | Remove reaction |
+| GET | `/api/v1/groups/:gid/posts/:id/comments` | Get comments |
+| POST | `/api/v1/groups/:gid/posts/:id/comments` | Create comment |
+| PUT | `/api/v1/groups/:gid/comments/:id` | Update comment |
+| DELETE | `/api/v1/groups/:gid/comments/:id` | Delete comment |
+| GET | `/api/v1/groups/:gid/streaks/leaderboard` | Get leaderboard |
+| GET | `/api/v1/groups/:gid/challenges` | List challenges |
+| POST | `/api/v1/groups/:gid/challenges` | Create challenge |
+| GET | `/api/v1/groups/:gid/challenges/:id` | Get challenge |
+| POST | `/api/v1/groups/:gid/challenges/:id/join` | Join challenge |
+| DELETE | `/api/v1/groups/:gid/challenges/:id/leave` | Leave challenge |
+| DELETE | `/api/v1/groups/:gid/challenges/:id` | Delete challenge |
+| POST | `/api/v1/groups/:gid/goals` | Create goal |
+| PUT | `/api/v1/groups/:gid/goals/:id` | Update goal |
+| DELETE | `/api/v1/groups/:gid/goals/:id` | Delete goal |
+
+### Group Admin Routes (requires group admin role)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| PUT | `/api/v1/groups/:gid` | Update group |
+| DELETE | `/api/v1/groups/:gid` | Delete group |
+| PUT | `/api/v1/groups/:gid/members/:uid` | Update member role |
+| DELETE | `/api/v1/groups/:gid/members/:uid` | Remove member |
+| POST | `/api/v1/groups/:gid/invites` | Create invite |
+| GET | `/api/v1/groups/:gid/invites` | List invites |
+| DELETE | `/api/v1/groups/:gid/invites/:iid` | Revoke invite |
 
 ### Admin Only
 | Method | Endpoint | Description |
@@ -307,6 +349,18 @@ Core activity types are seeded automatically:
 | Audit Log Sanitization | Fixed `maskEmail` panic, added input sanitization for log entries |
 | HTML Sanitization | User input escaped with `html.EscapeString` after tag stripping |
 | UserHandler Dependency | Fixed nil `AuthService` in user creation flow |
+
+### Multi-Tenancy Security (Feb 2026)
+
+| Feature | Description |
+|---------|-------------|
+| Group Isolation | All content scoped to groups; cross-group access prevented |
+| Reaction/Comment Group Validation | Services validate post belongs to group before allowing reactions/comments |
+| Invite Code Brute-Force Protection | 12-char codes (A-Z, 2-9 charset), 5 attempts/min rate limit |
+| Invite Expiration | Codes expire after configurable time |
+| Invite Use Limits | Max uses per invite code |
+| Membership Validation | Middleware checks group membership/admin for all group routes |
+| Soft Delete Membership | Historical posts preserved when users leave |
 
 ## Reference Documents
 

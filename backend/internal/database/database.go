@@ -42,10 +42,16 @@ func Connect(dbPath string, debug bool) (*gorm.DB, error) {
 
 func Migrate(db *gorm.DB) error {
 	return db.AutoMigrate(
+		// Core user and auth
 		&models.User{},
 		&models.RefreshToken{},
 		&models.PasswordHistory{},
 		&models.PasswordResetToken{},
+		// Groups (must come before models that reference it)
+		&models.Group{},
+		&models.GroupMember{},
+		&models.GroupInvite{},
+		// Content
 		&models.ActivityType{},
 		&models.Post{},
 		&models.PostImage{},
@@ -55,6 +61,7 @@ func Migrate(db *gorm.DB) error {
 		&models.Challenge{},
 		&models.ChallengeParticipant{},
 		&models.Goal{},
+		// System
 		&models.DeviceToken{},
 		&models.AuditLog{},
 		&models.RateLimit{},
@@ -85,6 +92,10 @@ func CreateIndexes(db *gorm.DB) error {
 		"CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires_at ON refresh_tokens(expires_at)",
 		"CREATE UNIQUE INDEX IF NOT EXISTS idx_reactions_user_post ON reactions(user_id, post_id)",
 		"CREATE UNIQUE INDEX IF NOT EXISTS idx_challenge_participants_unique ON challenge_participants(challenge_id, user_id)",
+		// Group indexes
+		"CREATE INDEX IF NOT EXISTS idx_group_members_user_active ON group_members(user_id) WHERE left_at IS NULL",
+		"CREATE INDEX IF NOT EXISTS idx_group_members_group_active ON group_members(group_id) WHERE left_at IS NULL",
+		"CREATE INDEX IF NOT EXISTS idx_group_invites_code_valid ON group_invites(code) WHERE use_count < max_uses",
 	}
 
 	for _, idx := range indexes {

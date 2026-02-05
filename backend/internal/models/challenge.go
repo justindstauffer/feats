@@ -6,6 +6,7 @@ import (
 
 type Challenge struct {
 	ID             string     `gorm:"type:text;primaryKey" json:"id"`
+	GroupID        string     `gorm:"type:text;not null;index" json:"group_id"`
 	CreatedBy      string     `gorm:"type:text;not null" json:"created_by"`
 	Title          string     `gorm:"type:text;not null" json:"title"`
 	Description    *string    `gorm:"type:text" json:"description,omitempty"`
@@ -16,6 +17,7 @@ type Challenge struct {
 	CreatedAt      time.Time  `gorm:"type:datetime;not null" json:"created_at"`
 
 	// Relationships
+	Group        Group                  `gorm:"foreignKey:GroupID" json:"-"`
 	Creator      User                   `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
 	ActivityType *ActivityType          `gorm:"foreignKey:ActivityTypeID" json:"activity_type,omitempty"`
 	Participants []ChallengeParticipant `gorm:"foreignKey:ChallengeID" json:"participants,omitempty"`

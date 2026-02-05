@@ -43,10 +43,11 @@ func NewPostHandler(
 }
 
 func (h *PostHandler) ListPosts(c *gin.Context) {
+	groupID, _ := middleware.GetCurrentGroupID(c)
 	page := getPageParam(c)
 	perPage := getPerPageParam(c)
 
-	posts, total, err := h.postService.ListPosts(page, perPage)
+	posts, total, err := h.postService.ListPosts(groupID, page, perPage)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse(
 			models.ErrCodeInternalError,
@@ -59,9 +60,10 @@ func (h *PostHandler) ListPosts(c *gin.Context) {
 }
 
 func (h *PostHandler) GetPost(c *gin.Context) {
+	groupID, _ := middleware.GetCurrentGroupID(c)
 	postID := c.Param("id")
 
-	post, err := h.postService.GetPostByID(postID)
+	post, err := h.postService.GetPostByID(groupID, postID)
 	if err != nil {
 		if err == services.ErrPostNotFound {
 			c.JSON(http.StatusNotFound, models.ErrorResponse(
@@ -81,6 +83,8 @@ func (h *PostHandler) GetPost(c *gin.Context) {
 }
 
 func (h *PostHandler) CreatePost(c *gin.Context) {
+	groupID, _ := middleware.GetCurrentGroupID(c)
+
 	var input services.CreatePostInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse(
@@ -92,7 +96,7 @@ func (h *PostHandler) CreatePost(c *gin.Context) {
 
 	userID, _ := middleware.GetCurrentUserID(c)
 
-	post, err := h.postService.CreatePost(input, userID)
+	post, err := h.postService.CreatePost(groupID, input, userID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse(
 			models.ErrCodeValidation,
@@ -101,27 +105,28 @@ func (h *PostHandler) CreatePost(c *gin.Context) {
 		return
 	}
 
-	// Update streak
-	h.streakService.UpdateStreakForActivity(userID, time.Now())
+	// Update streak for this group
+	h.streakService.UpdateStreakForActivity(groupID, userID, time.Now())
 
-	// Update challenge progress and get completed challenges
-	completedChallengeIDs, _ := h.challengeService.UpdateProgressForActivity(userID, input.ActivityTypeID)
+	// Update challenge progress and get completed challenges (within this group)
+	completedChallengeIDs, _ := h.challengeService.UpdateProgressForActivity(groupID, userID, input.ActivityTypeID)
 
 	// Create completion posts for any just-completed challenges
 	for _, challengeID := range completedChallengeIDs {
-		challenge, err := h.challengeService.GetChallengeByID(challengeID)
+		challenge, err := h.challengeService.GetChallengeByID(groupID, challengeID)
 		if err == nil {
-			h.postService.CreateChallengeCompletionPost(userID, challenge.Title)
+			h.postService.CreateChallengeCompletionPost(groupID, userID, challenge.Title)
 		}
 	}
 
-	// Update goal progress
-	h.goalService.UpdateProgressForActivity(userID, input.ActivityTypeID)
+	// Update goal progress for this group
+	h.goalService.UpdateProgressForActivity(groupID, userID, input.ActivityTypeID)
 
 	c.JSON(http.StatusCreated, models.SuccessResponse(post))
 }
 
 func (h *PostHandler) UpdatePost(c *gin.Context) {
+	groupID, _ := middleware.GetCurrentGroupID(c)
 	postID := c.Param("id")
 
 	var input services.UpdatePostInput
@@ -136,7 +141,7 @@ func (h *PostHandler) UpdatePost(c *gin.Context) {
 	userID, _ := middleware.GetCurrentUserID(c)
 	isAdmin := middleware.IsAdmin(c)
 
-	post, err := h.postService.UpdatePost(postID, input, userID, isAdmin)
+	post, err := h.postService.UpdatePost(groupID, postID, input, userID, isAdmin)
 	if err != nil {
 		switch err {
 		case services.ErrPostNotFound:
@@ -162,11 +167,12 @@ func (h *PostHandler) UpdatePost(c *gin.Context) {
 }
 
 func (h *PostHandler) DeletePost(c *gin.Context) {
+	groupID, _ := middleware.GetCurrentGroupID(c)
 	postID := c.Param("id")
 	userID, _ := middleware.GetCurrentUserID(c)
 	isAdmin := middleware.IsAdmin(c)
 
-	err := h.postService.DeletePost(postID, userID, isAdmin)
+	err := h.postService.DeletePost(groupID, postID, userID, isAdmin)
 	if err != nil {
 		switch err {
 		case services.ErrPostNotFound:
@@ -194,6 +200,7 @@ func (h *PostHandler) DeletePost(c *gin.Context) {
 }
 
 func (h *PostHandler) UploadImage(c *gin.Context) {
+	groupID, _ := middleware.GetCurrentGroupID(c)
 	postID := c.Param("id")
 	userID, _ := middleware.GetCurrentUserID(c)
 	isAdmin := middleware.IsAdmin(c)
@@ -208,7 +215,7 @@ func (h *PostHandler) UploadImage(c *gin.Context) {
 	}
 	defer file.Close()
 
-	image, err := h.postService.UploadImage(postID, userID, isAdmin, file, header.Filename)
+	image, err := h.postService.UploadImage(groupID, postID, userID, isAdmin, file, header.Filename)
 	if err != nil {
 		switch err {
 		case services.ErrPostNotFound:
@@ -244,12 +251,13 @@ func (h *PostHandler) UploadImage(c *gin.Context) {
 }
 
 func (h *PostHandler) DeleteImage(c *gin.Context) {
+	groupID, _ := middleware.GetCurrentGroupID(c)
 	postID := c.Param("id")
 	imageID := c.Param("image_id")
 	userID, _ := middleware.GetCurrentUserID(c)
 	isAdmin := middleware.IsAdmin(c)
 
-	err := h.postService.DeleteImage(postID, imageID, userID, isAdmin)
+	err := h.postService.DeleteImage(groupID, postID, imageID, userID, isAdmin)
 	if err != nil {
 		switch err {
 		case services.ErrPostNotFound:

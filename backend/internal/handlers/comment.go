@@ -20,10 +20,18 @@ func NewCommentHandler(commentService *services.CommentService) *CommentHandler 
 }
 
 func (h *CommentHandler) GetComments(c *gin.Context) {
+	groupID, _ := middleware.GetCurrentGroupID(c)
 	postID := c.Param("id")
 
-	comments, err := h.commentService.GetComments(postID)
+	comments, err := h.commentService.GetComments(groupID, postID)
 	if err != nil {
+		if err == services.ErrPostNotFound {
+			c.JSON(http.StatusNotFound, models.ErrorResponse(
+				models.ErrCodeNotFound,
+				"Post not found",
+			))
+			return
+		}
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse(
 			models.ErrCodeInternalError,
 			"An error occurred",
@@ -35,6 +43,7 @@ func (h *CommentHandler) GetComments(c *gin.Context) {
 }
 
 func (h *CommentHandler) CreateComment(c *gin.Context) {
+	groupID, _ := middleware.GetCurrentGroupID(c)
 	postID := c.Param("id")
 
 	var input services.CreateCommentInput
@@ -48,7 +57,7 @@ func (h *CommentHandler) CreateComment(c *gin.Context) {
 
 	userID, _ := middleware.GetCurrentUserID(c)
 
-	comment, err := h.commentService.CreateComment(postID, userID, input)
+	comment, err := h.commentService.CreateComment(groupID, postID, userID, input)
 	if err != nil {
 		switch err {
 		case services.ErrPostNotFound:
@@ -74,6 +83,7 @@ func (h *CommentHandler) CreateComment(c *gin.Context) {
 }
 
 func (h *CommentHandler) UpdateComment(c *gin.Context) {
+	groupID, _ := middleware.GetCurrentGroupID(c)
 	commentID := c.Param("id")
 
 	var input services.UpdateCommentInput
@@ -88,7 +98,7 @@ func (h *CommentHandler) UpdateComment(c *gin.Context) {
 	userID, _ := middleware.GetCurrentUserID(c)
 	isAdmin := middleware.IsAdmin(c)
 
-	comment, err := h.commentService.UpdateComment(commentID, userID, isAdmin, input)
+	comment, err := h.commentService.UpdateComment(groupID, commentID, userID, isAdmin, input)
 	if err != nil {
 		switch err {
 		case services.ErrCommentNotFound:
@@ -119,11 +129,12 @@ func (h *CommentHandler) UpdateComment(c *gin.Context) {
 }
 
 func (h *CommentHandler) DeleteComment(c *gin.Context) {
+	groupID, _ := middleware.GetCurrentGroupID(c)
 	commentID := c.Param("id")
 	userID, _ := middleware.GetCurrentUserID(c)
 	isAdmin := middleware.IsAdmin(c)
 
-	err := h.commentService.DeleteComment(commentID, userID, isAdmin)
+	err := h.commentService.DeleteComment(groupID, commentID, userID, isAdmin)
 	if err != nil {
 		switch err {
 		case services.ErrCommentNotFound:

@@ -8,6 +8,7 @@ import (
 
 type Post struct {
 	ID             string         `gorm:"type:text;primaryKey" json:"id"`
+	GroupID        string         `gorm:"type:text;not null;index" json:"group_id"`
 	UserID         string         `gorm:"type:text;not null;index" json:"user_id"`
 	ActivityTypeID string         `gorm:"type:text;not null" json:"activity_type_id"`
 	Description    *string        `gorm:"type:text" json:"description,omitempty"`
@@ -16,6 +17,7 @@ type Post struct {
 	DeletedAt      gorm.DeletedAt `gorm:"type:datetime;index" json:"-"`
 
 	// Relationships
+	Group        Group        `gorm:"foreignKey:GroupID" json:"-"`
 	User         User         `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	ActivityType ActivityType `gorm:"foreignKey:ActivityTypeID" json:"activity_type,omitempty"`
 	Images       []PostImage  `gorm:"foreignKey:PostID" json:"images,omitempty"`

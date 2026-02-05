@@ -170,3 +170,19 @@ func (rl *RateLimiter) PostRateLimit() gin.HandlerFunc {
 		return "post:" + userID
 	}, maxTokens, refillRate)
 }
+
+// InviteRedeemRateLimit applies rate limiting to invite code redemption
+// This helps prevent brute-force attempts on invite codes
+func (rl *RateLimiter) InviteRedeemRateLimit() gin.HandlerFunc {
+	// 5 attempts per minute per user
+	maxTokens := 5.0
+	refillRate := maxTokens / 60 // refill per minute
+
+	return rl.rateLimitMiddleware(func(c *gin.Context) string {
+		userID, _ := GetCurrentUserID(c)
+		if userID == "" {
+			return "invite:" + c.ClientIP()
+		}
+		return "invite:" + userID
+	}, maxTokens, refillRate)
+}

@@ -33,14 +33,15 @@ func NewStreakService(db *gorm.DB, cfg *config.Config) *StreakService {
 	}
 }
 
-// GetUserStreak returns a user's streak information
-func (s *StreakService) GetUserStreak(userID string) (*models.Streak, error) {
+// GetUserStreak returns a user's streak information within a group
+func (s *StreakService) GetUserStreak(groupID, userID string) (*models.Streak, error) {
 	var streak models.Streak
-	if err := s.db.Where("user_id = ?", userID).First(&streak).Error; err != nil {
+	if err := s.db.Where("group_id = ? AND user_id = ?", groupID, userID).First(&streak).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// Create initial streak
+			// Create initial streak for this group
 			streak = models.Streak{
 				ID:            uuid.New().String(),
+				GroupID:       groupID,
 				UserID:        userID,
 				CurrentStreak: 0,
 				LongestStreak: 0,
@@ -62,9 +63,9 @@ func (s *StreakService) GetUserStreak(userID string) (*models.Streak, error) {
 	return &streak, nil
 }
 
-// UpdateStreakForActivity updates a user's streak after posting an activity
-func (s *StreakService) UpdateStreakForActivity(userID string, activityTime time.Time) (*models.Streak, bool, error) {
-	streak, err := s.GetUserStreak(userID)
+// UpdateStreakForActivity updates a user's streak after posting an activity within a group
+func (s *StreakService) UpdateStreakForActivity(groupID, userID string, activityTime time.Time) (*models.Streak, bool, error) {
+	streak, err := s.GetUserStreak(groupID, userID)
 	if err != nil {
 		return nil, false, err
 	}
@@ -86,14 +87,15 @@ func (s *StreakService) UpdateStreakForActivity(userID string, activityTime time
 	return streak, isMilestone, nil
 }
 
-// GetLeaderboard returns all users' streaks sorted by current streak
-func (s *StreakService) GetLeaderboard() ([]models.Streak, error) {
+// GetLeaderboard returns all users' streaks within a group sorted by current streak
+func (s *StreakService) GetLeaderboard(groupID string) ([]models.Streak, error) {
 	var streaks []models.Streak
 
-	// First, update any stale streaks
-	s.updateStaleStreaks()
+	// First, update any stale streaks in this group
+	s.updateStaleStreaks(groupID)
 
 	if err := s.db.
+		Where("group_id = ?", groupID).
 		Preload("User").
 		Order("current_streak DESC, longest_streak DESC").
 		Find(&streaks).Error; err != nil {
@@ -103,10 +105,10 @@ func (s *StreakService) GetLeaderboard() ([]models.Streak, error) {
 	return streaks, nil
 }
 
-// updateStaleStreaks resets streaks that haven't been updated
-func (s *StreakService) updateStaleStreaks() {
+// updateStaleStreaks resets streaks that haven't been updated in a group
+func (s *StreakService) updateStaleStreaks(groupID string) {
 	var streaks []models.Streak
-	s.db.Find(&streaks)
+	s.db.Where("group_id = ?", groupID).Find(&streaks)
 
 	for _, streak := range streaks {
 		if streak.CheckAndResetIfNeeded(s.timezone) {

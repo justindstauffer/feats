@@ -30,11 +30,11 @@ type CreateActivityInput struct {
 	Icon *string `json:"icon"`
 }
 
-// ListActivities returns all activity types (excludes Achievement which is system-only)
-func (s *ActivityService) ListActivities() ([]models.ActivityType, error) {
+// ListActivities returns all activity types for a group (system-wide + group-specific, excludes Achievement which is system-only)
+func (s *ActivityService) ListActivities(groupID string) ([]models.ActivityType, error) {
 	var activities []models.ActivityType
 	if err := s.db.
-		Where("name != ?", "Achievement").
+		Where("name != ? AND (group_id IS NULL OR group_id = ?)", "Achievement", groupID).
 		Order("is_system DESC, name ASC").
 		Find(&activities).Error; err != nil {
 		return nil, err
@@ -42,10 +42,10 @@ func (s *ActivityService) ListActivities() ([]models.ActivityType, error) {
 	return activities, nil
 }
 
-// GetActivityByID retrieves an activity type by ID
-func (s *ActivityService) GetActivityByID(id string) (*models.ActivityType, error) {
+// GetActivityByID retrieves an activity type by ID (must be system-wide or belong to the group)
+func (s *ActivityService) GetActivityByID(groupID, id string) (*models.ActivityType, error) {
 	var activity models.ActivityType
-	if err := s.db.First(&activity, "id = ?", id).Error; err != nil {
+	if err := s.db.First(&activity, "id = ? AND (group_id IS NULL OR group_id = ?)", id, groupID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrActivityNotFound
 		}
@@ -54,18 +54,19 @@ func (s *ActivityService) GetActivityByID(id string) (*models.ActivityType, erro
 	return &activity, nil
 }
 
-// CreateActivity creates a custom activity type
-func (s *ActivityService) CreateActivity(input CreateActivityInput, userID string) (*models.ActivityType, error) {
+// CreateActivity creates a custom activity type for a group
+func (s *ActivityService) CreateActivity(groupID string, input CreateActivityInput, userID string) (*models.ActivityType, error) {
 	name := strings.TrimSpace(input.Name)
 
-	// Check for duplicate name
+	// Check for duplicate name (within system-wide or this group)
 	var existing models.ActivityType
-	if err := s.db.Where("LOWER(name) = LOWER(?)", name).First(&existing).Error; err == nil {
+	if err := s.db.Where("LOWER(name) = LOWER(?) AND (group_id IS NULL OR group_id = ?)", name, groupID).First(&existing).Error; err == nil {
 		return nil, ErrActivityExists
 	}
 
 	activity := models.ActivityType{
 		ID:        uuid.New().String(),
+		GroupID:   &groupID,
 		Name:      name,
 		Icon:      input.Icon,
 		IsSystem:  false,
@@ -80,10 +81,10 @@ func (s *ActivityService) CreateActivity(input CreateActivityInput, userID strin
 	return &activity, nil
 }
 
-// DeleteActivity deletes a custom activity type
-func (s *ActivityService) DeleteActivity(id, userID string, isAdmin bool) error {
+// DeleteActivity deletes a custom activity type within a group
+func (s *ActivityService) DeleteActivity(groupID, id, userID string, isAdmin bool) error {
 	var activity models.ActivityType
-	if err := s.db.First(&activity, "id = ?", id).Error; err != nil {
+	if err := s.db.First(&activity, "id = ? AND group_id = ?", id, groupID).Error; err != nil {
 		return ErrActivityNotFound
 	}
 
@@ -92,14 +93,14 @@ func (s *ActivityService) DeleteActivity(id, userID string, isAdmin bool) error 
 		return ErrCannotDeleteSystem
 	}
 
-	// Only creator or admin can delete
+	// Only creator or group admin can delete
 	if !isAdmin && (activity.CreatedBy == nil || *activity.CreatedBy != userID) {
 		return errors.New("not authorized to delete this activity")
 	}
 
-	// Check if activity is in use
+	// Check if activity is in use within the group
 	var postCount int64
-	s.db.Model(&models.Post{}).Where("activity_type_id = ?", id).Count(&postCount)
+	s.db.Model(&models.Post{}).Where("activity_type_id = ? AND group_id = ?", id, groupID).Count(&postCount)
 	if postCount > 0 {
 		return ErrActivityInUse
 	}

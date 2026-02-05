@@ -36,11 +36,12 @@ type CreateChallengeInput struct {
 	EndDate        *time.Time `json:"end_date"`
 }
 
-// ListChallenges returns all active challenges
-func (s *ChallengeService) ListChallenges(includeExpired bool) ([]models.Challenge, error) {
+// ListChallenges returns all active challenges for a group
+func (s *ChallengeService) ListChallenges(groupID string, includeExpired bool) ([]models.Challenge, error) {
 	var challenges []models.Challenge
 
 	query := s.db.
+		Where("group_id = ?", groupID).
 		Preload("Creator").
 		Preload("ActivityType").
 		Preload("Participants").
@@ -59,8 +60,8 @@ func (s *ChallengeService) ListChallenges(includeExpired bool) ([]models.Challen
 	return challenges, nil
 }
 
-// GetChallengeByID retrieves a challenge by ID
-func (s *ChallengeService) GetChallengeByID(id string) (*models.Challenge, error) {
+// GetChallengeByID retrieves a challenge by ID within a group
+func (s *ChallengeService) GetChallengeByID(groupID, id string) (*models.Challenge, error) {
 	var challenge models.Challenge
 	if err := s.db.
 		Preload("Creator").
@@ -69,7 +70,7 @@ func (s *ChallengeService) GetChallengeByID(id string) (*models.Challenge, error
 			return db.Order("progress DESC, joined_at ASC")
 		}).
 		Preload("Participants.User").
-		First(&challenge, "id = ?", id).Error; err != nil {
+		First(&challenge, "id = ? AND group_id = ?", id, groupID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrChallengeNotFound
 		}
@@ -78,8 +79,8 @@ func (s *ChallengeService) GetChallengeByID(id string) (*models.Challenge, error
 	return &challenge, nil
 }
 
-// CreateChallenge creates a new challenge
-func (s *ChallengeService) CreateChallenge(input CreateChallengeInput, userID string) (*models.Challenge, error) {
+// CreateChallenge creates a new challenge within a group
+func (s *ChallengeService) CreateChallenge(groupID string, input CreateChallengeInput, userID string) (*models.Challenge, error) {
 	title := strings.TrimSpace(input.Title)
 	if len(title) > 100 {
 		title = title[:100]
@@ -94,10 +95,10 @@ func (s *ChallengeService) CreateChallenge(input CreateChallengeInput, userID st
 		description = &desc
 	}
 
-	// Validate activity type if provided
+	// Validate activity type if provided (system-wide or group-specific)
 	if input.ActivityTypeID != nil {
 		var activity models.ActivityType
-		if err := s.db.First(&activity, "id = ?", *input.ActivityTypeID).Error; err != nil {
+		if err := s.db.First(&activity, "id = ? AND (group_id IS NULL OR group_id = ?)", *input.ActivityTypeID, groupID).Error; err != nil {
 			return nil, errors.New("invalid activity type")
 		}
 	}
@@ -111,6 +112,7 @@ func (s *ChallengeService) CreateChallenge(input CreateChallengeInput, userID st
 
 	challenge := models.Challenge{
 		ID:             uuid.New().String(),
+		GroupID:        groupID,
 		CreatedBy:      userID,
 		Title:          title,
 		Description:    description,
@@ -135,12 +137,12 @@ func (s *ChallengeService) CreateChallenge(input CreateChallengeInput, userID st
 	}
 	s.db.Create(&participant)
 
-	return s.GetChallengeByID(challenge.ID)
+	return s.GetChallengeByID(groupID, challenge.ID)
 }
 
-// JoinChallenge adds a user to a challenge
-func (s *ChallengeService) JoinChallenge(challengeID, userID string) error {
-	challenge, err := s.GetChallengeByID(challengeID)
+// JoinChallenge adds a user to a challenge within a group
+func (s *ChallengeService) JoinChallenge(groupID, challengeID, userID string) error {
+	challenge, err := s.GetChallengeByID(groupID, challengeID)
 	if err != nil {
 		return err
 	}
@@ -174,8 +176,14 @@ func (s *ChallengeService) JoinChallenge(challengeID, userID string) error {
 	return s.db.Create(&participant).Error
 }
 
-// LeaveChallenge removes a user from a challenge
-func (s *ChallengeService) LeaveChallenge(challengeID, userID string) error {
+// LeaveChallenge removes a user from a challenge within a group
+func (s *ChallengeService) LeaveChallenge(groupID, challengeID, userID string) error {
+	// Verify challenge belongs to group
+	var challenge models.Challenge
+	if err := s.db.First(&challenge, "id = ? AND group_id = ?", challengeID, groupID).Error; err != nil {
+		return ErrChallengeNotFound
+	}
+
 	result := s.db.Where("challenge_id = ? AND user_id = ?", challengeID, userID).Delete(&models.ChallengeParticipant{})
 	if result.RowsAffected == 0 {
 		return ErrNotParticipating
@@ -184,9 +192,9 @@ func (s *ChallengeService) LeaveChallenge(challengeID, userID string) error {
 }
 
 // DeleteChallenge deletes a challenge (creator or admin only)
-func (s *ChallengeService) DeleteChallenge(challengeID, userID string, isAdmin bool) error {
+func (s *ChallengeService) DeleteChallenge(groupID, challengeID, userID string, isAdmin bool) error {
 	var challenge models.Challenge
-	if err := s.db.First(&challenge, "id = ?", challengeID).Error; err != nil {
+	if err := s.db.First(&challenge, "id = ? AND group_id = ?", challengeID, groupID).Error; err != nil {
 		return ErrChallengeNotFound
 	}
 
@@ -200,11 +208,11 @@ func (s *ChallengeService) DeleteChallenge(challengeID, userID string, isAdmin b
 	return s.db.Delete(&challenge).Error
 }
 
-// UpdateProgressForActivity updates challenge progress when a user posts an activity
-func (s *ChallengeService) UpdateProgressForActivity(userID string, activityTypeID string) ([]string, error) {
+// UpdateProgressForActivity updates challenge progress when a user posts an activity within a group
+func (s *ChallengeService) UpdateProgressForActivity(groupID, userID string, activityTypeID string) ([]string, error) {
 	var completedChallenges []string
 
-	log.Printf("[Challenge] UpdateProgressForActivity called: userID=%s, activityTypeID=%s", userID, activityTypeID)
+	log.Printf("[Challenge] UpdateProgressForActivity called: groupID=%s, userID=%s, activityTypeID=%s", groupID, userID, activityTypeID)
 
 	// Get current date boundaries for proper comparison using configured timezone
 	now := time.Now().In(config.Location)
@@ -212,10 +220,11 @@ func (s *ChallengeService) UpdateProgressForActivity(userID string, activityType
 	endOfToday := startOfToday.Add(24 * time.Hour)
 	log.Printf("[Challenge] Date boundaries: startOfToday=%v, endOfToday=%v", startOfToday, endOfToday)
 
-	// Find all active challenges the user is participating in
+	// Find all active challenges the user is participating in within this group
 	var participants []models.ChallengeParticipant
 	if err := s.db.
 		Joins("JOIN challenges ON challenges.id = challenge_participants.challenge_id").
+		Where("challenges.group_id = ?", groupID).
 		Where("challenge_participants.user_id = ?", userID).
 		Where("challenge_participants.completed_at IS NULL").
 		Where("challenges.end_date IS NULL OR challenges.end_date >= ?", startOfToday).

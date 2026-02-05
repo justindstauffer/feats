@@ -6,14 +6,16 @@ import (
 
 type Streak struct {
 	ID               string     `gorm:"type:text;primaryKey" json:"id"`
-	UserID           string     `gorm:"type:text;uniqueIndex;not null" json:"user_id"`
+	GroupID          string     `gorm:"type:text;not null;uniqueIndex:idx_streak_group_user" json:"group_id"`
+	UserID           string     `gorm:"type:text;not null;uniqueIndex:idx_streak_group_user" json:"user_id"`
 	CurrentStreak    int        `gorm:"not null;default:0" json:"current_streak"`
 	LongestStreak    int        `gorm:"not null;default:0" json:"longest_streak"`
 	LastActivityDate *time.Time `gorm:"type:date" json:"last_activity_date,omitempty"`
 	UpdatedAt        time.Time  `gorm:"type:datetime;not null" json:"updated_at"`
 
 	// Relationships
-	User User `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	Group Group `gorm:"foreignKey:GroupID" json:"-"`
+	User  User  `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
 
 func (Streak) TableName() string {

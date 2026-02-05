@@ -6,13 +6,15 @@ import (
 
 type ActivityType struct {
 	ID        string    `gorm:"type:text;primaryKey" json:"id"`
-	Name      string    `gorm:"type:text;uniqueIndex;not null" json:"name"`
+	GroupID   *string   `gorm:"type:text;index" json:"group_id,omitempty"` // nil = system-wide
+	Name      string    `gorm:"type:text;not null" json:"name"`
 	Icon      *string   `gorm:"type:text" json:"icon,omitempty"`
 	IsSystem  bool      `gorm:"not null;default:false" json:"is_system"`
 	CreatedBy *string   `gorm:"type:text" json:"created_by,omitempty"`
 	CreatedAt time.Time `gorm:"type:datetime;not null" json:"created_at"`
 
 	// Relationships
+	Group   *Group `gorm:"foreignKey:GroupID" json:"-"`
 	Creator *User  `gorm:"foreignKey:CreatedBy" json:"-"`
 	Posts   []Post `gorm:"foreignKey:ActivityTypeID" json:"-"`
 }

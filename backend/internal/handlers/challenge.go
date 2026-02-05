@@ -20,9 +20,10 @@ func NewChallengeHandler(challengeService *services.ChallengeService) *Challenge
 }
 
 func (h *ChallengeHandler) ListChallenges(c *gin.Context) {
+	groupID, _ := middleware.GetCurrentGroupID(c)
 	includeExpired := c.Query("include_expired") == "true"
 
-	challenges, err := h.challengeService.ListChallenges(includeExpired)
+	challenges, err := h.challengeService.ListChallenges(groupID, includeExpired)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse(
 			models.ErrCodeInternalError,
@@ -35,9 +36,10 @@ func (h *ChallengeHandler) ListChallenges(c *gin.Context) {
 }
 
 func (h *ChallengeHandler) GetChallenge(c *gin.Context) {
+	groupID, _ := middleware.GetCurrentGroupID(c)
 	challengeID := c.Param("id")
 
-	challenge, err := h.challengeService.GetChallengeByID(challengeID)
+	challenge, err := h.challengeService.GetChallengeByID(groupID, challengeID)
 	if err != nil {
 		if err == services.ErrChallengeNotFound {
 			c.JSON(http.StatusNotFound, models.ErrorResponse(
@@ -57,6 +59,8 @@ func (h *ChallengeHandler) GetChallenge(c *gin.Context) {
 }
 
 func (h *ChallengeHandler) CreateChallenge(c *gin.Context) {
+	groupID, _ := middleware.GetCurrentGroupID(c)
+
 	var input services.CreateChallengeInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse(
@@ -68,7 +72,7 @@ func (h *ChallengeHandler) CreateChallenge(c *gin.Context) {
 
 	userID, _ := middleware.GetCurrentUserID(c)
 
-	challenge, err := h.challengeService.CreateChallenge(input, userID)
+	challenge, err := h.challengeService.CreateChallenge(groupID, input, userID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse(
 			models.ErrCodeValidation,
@@ -81,10 +85,11 @@ func (h *ChallengeHandler) CreateChallenge(c *gin.Context) {
 }
 
 func (h *ChallengeHandler) JoinChallenge(c *gin.Context) {
+	groupID, _ := middleware.GetCurrentGroupID(c)
 	challengeID := c.Param("id")
 	userID, _ := middleware.GetCurrentUserID(c)
 
-	err := h.challengeService.JoinChallenge(challengeID, userID)
+	err := h.challengeService.JoinChallenge(groupID, challengeID, userID)
 	if err != nil {
 		switch err {
 		case services.ErrChallengeNotFound:
@@ -117,10 +122,11 @@ func (h *ChallengeHandler) JoinChallenge(c *gin.Context) {
 }
 
 func (h *ChallengeHandler) LeaveChallenge(c *gin.Context) {
+	groupID, _ := middleware.GetCurrentGroupID(c)
 	challengeID := c.Param("id")
 	userID, _ := middleware.GetCurrentUserID(c)
 
-	err := h.challengeService.LeaveChallenge(challengeID, userID)
+	err := h.challengeService.LeaveChallenge(groupID, challengeID, userID)
 	if err != nil {
 		if err == services.ErrNotParticipating {
 			c.JSON(http.StatusNotFound, models.ErrorResponse(
@@ -142,11 +148,12 @@ func (h *ChallengeHandler) LeaveChallenge(c *gin.Context) {
 }
 
 func (h *ChallengeHandler) DeleteChallenge(c *gin.Context) {
+	groupID, _ := middleware.GetCurrentGroupID(c)
 	challengeID := c.Param("id")
 	userID, _ := middleware.GetCurrentUserID(c)
 	isAdmin := middleware.IsAdmin(c)
 
-	err := h.challengeService.DeleteChallenge(challengeID, userID, isAdmin)
+	err := h.challengeService.DeleteChallenge(groupID, challengeID, userID, isAdmin)
 	if err != nil {
 		switch err {
 		case services.ErrChallengeNotFound:

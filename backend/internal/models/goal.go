@@ -14,6 +14,7 @@ const (
 
 type Goal struct {
 	ID              string     `gorm:"type:text;primaryKey" json:"id"`
+	GroupID         string     `gorm:"type:text;not null;index" json:"group_id"`
 	UserID          string     `gorm:"type:text;not null;index" json:"user_id"`
 	ActivityTypeID  *string    `gorm:"type:text" json:"activity_type_id,omitempty"`
 	TargetCount     int        `gorm:"not null" json:"target_count"`
@@ -24,6 +25,7 @@ type Goal struct {
 	UpdatedAt       time.Time  `gorm:"type:datetime;not null" json:"updated_at"`
 
 	// Relationships
+	Group        Group         `gorm:"foreignKey:GroupID" json:"-"`
 	User         User          `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	ActivityType *ActivityType `gorm:"foreignKey:ActivityTypeID" json:"activity_type,omitempty"`
 }

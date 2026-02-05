@@ -20,9 +20,10 @@ func NewGoalHandler(goalService *services.GoalService) *GoalHandler {
 }
 
 func (h *GoalHandler) GetUserGoals(c *gin.Context) {
+	groupID, _ := middleware.GetCurrentGroupID(c)
 	userID := c.Param("id")
 
-	goals, err := h.goalService.GetUserGoals(userID)
+	goals, err := h.goalService.GetUserGoals(groupID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse(
 			models.ErrCodeInternalError,
@@ -35,6 +36,8 @@ func (h *GoalHandler) GetUserGoals(c *gin.Context) {
 }
 
 func (h *GoalHandler) CreateGoal(c *gin.Context) {
+	groupID, _ := middleware.GetCurrentGroupID(c)
+
 	var input services.CreateGoalInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse(
@@ -46,7 +49,7 @@ func (h *GoalHandler) CreateGoal(c *gin.Context) {
 
 	userID, _ := middleware.GetCurrentUserID(c)
 
-	goal, err := h.goalService.CreateGoal(input, userID)
+	goal, err := h.goalService.CreateGoal(groupID, input, userID)
 	if err != nil {
 		if err == services.ErrInvalidPeriod {
 			c.JSON(http.StatusBadRequest, models.ErrorResponse(
@@ -66,6 +69,7 @@ func (h *GoalHandler) CreateGoal(c *gin.Context) {
 }
 
 func (h *GoalHandler) UpdateGoal(c *gin.Context) {
+	groupID, _ := middleware.GetCurrentGroupID(c)
 	goalID := c.Param("id")
 
 	var input services.UpdateGoalInput
@@ -79,7 +83,7 @@ func (h *GoalHandler) UpdateGoal(c *gin.Context) {
 
 	userID, _ := middleware.GetCurrentUserID(c)
 
-	goal, err := h.goalService.UpdateGoal(goalID, userID, input)
+	goal, err := h.goalService.UpdateGoal(groupID, goalID, userID, input)
 	if err != nil {
 		switch err {
 		case services.ErrGoalNotFound:
@@ -105,10 +109,11 @@ func (h *GoalHandler) UpdateGoal(c *gin.Context) {
 }
 
 func (h *GoalHandler) DeleteGoal(c *gin.Context) {
+	groupID, _ := middleware.GetCurrentGroupID(c)
 	goalID := c.Param("id")
 	userID, _ := middleware.GetCurrentUserID(c)
 
-	err := h.goalService.DeleteGoal(goalID, userID)
+	err := h.goalService.DeleteGoal(groupID, goalID, userID)
 	if err != nil {
 		if err == services.ErrGoalNotFound {
 			c.JSON(http.StatusNotFound, models.ErrorResponse(

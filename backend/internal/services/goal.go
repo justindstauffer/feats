@@ -45,13 +45,13 @@ type UpdateGoalInput struct {
 	Period      *string `json:"period"`
 }
 
-// GetUserGoals returns all goals for a user
-func (s *GoalService) GetUserGoals(userID string) ([]models.Goal, error) {
+// GetUserGoals returns all goals for a user within a group
+func (s *GoalService) GetUserGoals(groupID, userID string) ([]models.Goal, error) {
 	var goals []models.Goal
 
 	if err := s.db.
 		Preload("ActivityType").
-		Where("user_id = ?", userID).
+		Where("group_id = ? AND user_id = ?", groupID, userID).
 		Find(&goals).Error; err != nil {
 		return nil, err
 	}
@@ -66,10 +66,10 @@ func (s *GoalService) GetUserGoals(userID string) ([]models.Goal, error) {
 	return goals, nil
 }
 
-// GetGoalByID retrieves a goal by ID
-func (s *GoalService) GetGoalByID(goalID string) (*models.Goal, error) {
+// GetGoalByID retrieves a goal by ID within a group
+func (s *GoalService) GetGoalByID(groupID, goalID string) (*models.Goal, error) {
 	var goal models.Goal
-	if err := s.db.Preload("ActivityType").First(&goal, "id = ?", goalID).Error; err != nil {
+	if err := s.db.Preload("ActivityType").First(&goal, "id = ? AND group_id = ?", goalID, groupID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrGoalNotFound
 		}
@@ -84,17 +84,17 @@ func (s *GoalService) GetGoalByID(goalID string) (*models.Goal, error) {
 	return &goal, nil
 }
 
-// CreateGoal creates a new goal
-func (s *GoalService) CreateGoal(input CreateGoalInput, userID string) (*models.Goal, error) {
+// CreateGoal creates a new goal within a group
+func (s *GoalService) CreateGoal(groupID string, input CreateGoalInput, userID string) (*models.Goal, error) {
 	period := models.GoalPeriod(input.Period)
 	if !models.IsValidPeriod(period) {
 		return nil, ErrInvalidPeriod
 	}
 
-	// Validate activity type if provided
+	// Validate activity type if provided (system-wide or group-specific)
 	if input.ActivityTypeID != nil {
 		var activity models.ActivityType
-		if err := s.db.First(&activity, "id = ?", *input.ActivityTypeID).Error; err != nil {
+		if err := s.db.First(&activity, "id = ? AND (group_id IS NULL OR group_id = ?)", *input.ActivityTypeID, groupID).Error; err != nil {
 			return nil, errors.New("invalid activity type")
 		}
 	}
@@ -104,6 +104,7 @@ func (s *GoalService) CreateGoal(input CreateGoalInput, userID string) (*models.
 
 	goal := models.Goal{
 		ID:              uuid.New().String(),
+		GroupID:         groupID,
 		UserID:          userID,
 		ActivityTypeID:  input.ActivityTypeID,
 		TargetCount:     input.TargetCount,
@@ -118,13 +119,13 @@ func (s *GoalService) CreateGoal(input CreateGoalInput, userID string) (*models.
 		return nil, err
 	}
 
-	return s.GetGoalByID(goal.ID)
+	return s.GetGoalByID(groupID, goal.ID)
 }
 
-// UpdateGoal updates a goal
-func (s *GoalService) UpdateGoal(goalID, userID string, input UpdateGoalInput) (*models.Goal, error) {
+// UpdateGoal updates a goal within a group
+func (s *GoalService) UpdateGoal(groupID, goalID, userID string, input UpdateGoalInput) (*models.Goal, error) {
 	var goal models.Goal
-	if err := s.db.First(&goal, "id = ? AND user_id = ?", goalID, userID).Error; err != nil {
+	if err := s.db.First(&goal, "id = ? AND group_id = ? AND user_id = ?", goalID, groupID, userID).Error; err != nil {
 		return nil, ErrGoalNotFound
 	}
 
@@ -150,25 +151,25 @@ func (s *GoalService) UpdateGoal(goalID, userID string, input UpdateGoalInput) (
 		return nil, err
 	}
 
-	return s.GetGoalByID(goal.ID)
+	return s.GetGoalByID(groupID, goal.ID)
 }
 
-// DeleteGoal deletes a goal
-func (s *GoalService) DeleteGoal(goalID, userID string) error {
-	result := s.db.Where("id = ? AND user_id = ?", goalID, userID).Delete(&models.Goal{})
+// DeleteGoal deletes a goal within a group
+func (s *GoalService) DeleteGoal(groupID, goalID, userID string) error {
+	result := s.db.Where("id = ? AND group_id = ? AND user_id = ?", goalID, groupID, userID).Delete(&models.Goal{})
 	if result.RowsAffected == 0 {
 		return ErrGoalNotFound
 	}
 	return result.Error
 }
 
-// UpdateProgressForActivity updates goal progress when a user posts an activity
-func (s *GoalService) UpdateProgressForActivity(userID string, activityTypeID string) ([]string, error) {
+// UpdateProgressForActivity updates goal progress when a user posts an activity within a group
+func (s *GoalService) UpdateProgressForActivity(groupID, userID string, activityTypeID string) ([]string, error) {
 	var achievedGoals []string
 
-	// Get all user's goals
+	// Get all user's goals in this group
 	var goals []models.Goal
-	if err := s.db.Where("user_id = ?", userID).Find(&goals).Error; err != nil {
+	if err := s.db.Where("group_id = ? AND user_id = ?", groupID, userID).Find(&goals).Error; err != nil {
 		return nil, err
 	}
 
