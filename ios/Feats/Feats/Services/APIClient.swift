@@ -37,14 +37,17 @@ enum APIClientError: Error, LocalizedError {
 final class APIClient {
     static let shared = APIClient()
 
-    #if DEBUG
-    private let baseURL = "http://localhost:8080/api/v1"
-    private let imageBaseURL = "http://localhost:8080"
-    #else
-    // TODO: Change to production URL
-    private let baseURL = "http://localhost:8080/api/v1"
-    private let imageBaseURL = "http://localhost:8080"
-    #endif
+    // TODO: Change back to localhost for local development
+    private let baseURL = "https://feats-api.jstauff.com/api/v1"
+    private let imageBaseURL = "https://feats-api.jstauff.com"
+
+//    #if DEBUG
+//    private let baseURL = "http://localhost:8080/api/v1"
+//    private let imageBaseURL = "http://localhost:8080"
+//    #else
+//    private let baseURL = "https://feats-api.jstauff.com/api/v1"
+//    private let imageBaseURL = "https://feats-api.jstauff.com"
+//    #endif
 
     private var accessToken: String?
     private var accessTokenExpiry: Date?
