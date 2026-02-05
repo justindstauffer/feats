@@ -1,12 +1,15 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jstauff/feats-api/internal/config"
 	"github.com/jstauff/feats-api/internal/middleware"
 	"github.com/jstauff/feats-api/internal/models"
 	"github.com/jstauff/feats-api/internal/services"
@@ -18,6 +21,7 @@ type PostHandler struct {
 	challengeService *services.ChallengeService
 	goalService      *services.GoalService
 	auditService     *services.AuditService
+	cfg              *config.Config
 }
 
 func NewPostHandler(
@@ -26,6 +30,7 @@ func NewPostHandler(
 	challengeService *services.ChallengeService,
 	goalService *services.GoalService,
 	auditService *services.AuditService,
+	cfg *config.Config,
 ) *PostHandler {
 	return &PostHandler{
 		postService:      postService,
@@ -33,6 +38,7 @@ func NewPostHandler(
 		challengeService: challengeService,
 		goalService:      goalService,
 		auditService:     auditService,
+		cfg:              cfg,
 	}
 }
 
@@ -283,6 +289,46 @@ func (h *PostHandler) ServeImage(c *gin.Context) {
 		c.JSON(http.StatusNotFound, models.ErrorResponse(
 			models.ErrCodeNotFound,
 			"Image not found",
+		))
+		return
+	}
+
+	// Path traversal protection: ensure the image path is within the storage directory
+	absImagePath, err := filepath.Abs(imagePath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse(
+			models.ErrCodeInternalError,
+			"An error occurred",
+		))
+		return
+	}
+
+	absStoragePath, err := filepath.Abs(h.cfg.StoragePath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse(
+			models.ErrCodeInternalError,
+			"An error occurred",
+		))
+		return
+	}
+
+	// Ensure the image path starts with the storage path (prevent path traversal)
+	if !strings.HasPrefix(absImagePath, absStoragePath+string(filepath.Separator)) {
+		// Log the traversal attempt
+		userID, _ := middleware.GetCurrentUserID(c)
+		log.Printf("SECURITY: Path traversal attempt by user %s, attempted path: %s", userID, imagePath)
+		h.auditService.Log(services.AuditLogInput{
+			UserID:  &userID,
+			Action:  models.AuditActionAuthorizationFail,
+			Details: map[string]interface{}{
+				"reason":         "path_traversal_attempt",
+				"attempted_path": imagePath,
+			},
+			Success: false,
+		})
+		c.JSON(http.StatusForbidden, models.ErrorResponse(
+			models.ErrCodeForbidden,
+			"Access denied",
 		))
 		return
 	}

@@ -247,6 +247,13 @@ Server runs at `http://localhost:8080`
 - [ ] Unit tests
 - [ ] Integration tests
 
+### Future Security Enhancements (Low Priority)
+- [ ] JWT issuer/audience validation - Add `iss` and `aud` claims for defense-in-depth
+- [ ] JTI blocklist for immediate token revocation - Currently access tokens valid until expiration even after password change
+- [ ] Redis-based distributed rate limiting - Current in-memory rate limiting doesn't work across multiple instances
+- [ ] Request body size limits middleware
+- [ ] CSRF tokens (if browser-facing features added)
+
 ### iOS App
 - [ ] Not started - see `ios/` folder
 
@@ -261,6 +268,8 @@ See `.env.example` for full list. Key variables:
 | `PORT` | No | Default: `8080` |
 | `GIN_MODE` | No | `debug` or `release` |
 | `BCRYPT_COST` | No | Default: `12` |
+| `ALLOWED_ORIGINS` | No | Comma-separated list of allowed CORS origins (empty = deny all) |
+| `SESSION_INACTIVE_TTL` | No | Default: `720h` (30 days) - Session inactivity timeout |
 
 ## Database
 
@@ -286,6 +295,18 @@ Core activity types are seeded automatically:
 - Images re-encoded to JPEG to strip metadata
 - Rate limiting on all endpoints
 - Security headers on all responses
+
+### Security Fixes Implemented (Feb 2026)
+
+| Fix | Description |
+|-----|-------------|
+| CORS Configuration | Added `ALLOWED_ORIGINS` env var; denies all browser origins by default |
+| Path Traversal Protection | `ServeImage` validates paths stay within storage directory |
+| Magic Byte Validation | Image uploads validated by file signature, not just extension |
+| Session Inactivity Timeout | Sessions expire after `SESSION_INACTIVE_TTL` of inactivity |
+| Audit Log Sanitization | Fixed `maskEmail` panic, added input sanitization for log entries |
+| HTML Sanitization | User input escaped with `html.EscapeString` after tag stripping |
+| UserHandler Dependency | Fixed nil `AuthService` in user creation flow |
 
 ## Reference Documents
 

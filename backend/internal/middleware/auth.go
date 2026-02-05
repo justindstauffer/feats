@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jstauff/feats-api/internal/config"
@@ -77,6 +78,18 @@ func (m *AuthMiddleware) Authenticate() gin.HandlerFunc {
 			))
 			c.Abort()
 			return
+		}
+
+		// Check session inactivity timeout
+		if user.LastLoginAt != nil && m.cfg.SessionInactiveTTL > 0 {
+			if time.Since(*user.LastLoginAt) > m.cfg.SessionInactiveTTL {
+				c.JSON(http.StatusUnauthorized, models.ErrorResponse(
+					models.ErrCodeSessionExpired,
+					"Session expired due to inactivity",
+				))
+				c.Abort()
+				return
+			}
 		}
 
 		// Check if password change is required

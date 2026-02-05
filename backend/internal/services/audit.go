@@ -2,6 +2,7 @@ package services
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -32,9 +33,22 @@ type AuditLogInput struct {
 func (s *AuditService) Log(input AuditLogInput) error {
 	var detailsJSON *string
 	if input.Details != nil {
-		bytes, err := json.Marshal(input.Details)
+		// Sanitize all string values in Details
+		sanitizedDetails := make(map[string]interface{})
+		for k, v := range input.Details {
+			if str, ok := v.(string); ok {
+				sanitizedDetails[k] = sanitizeAuditString(str, 1000)
+			} else {
+				sanitizedDetails[k] = v
+			}
+		}
+		bytes, err := json.Marshal(sanitizedDetails)
 		if err == nil {
 			str := string(bytes)
+			// Limit total JSON size
+			if len(str) > 4000 {
+				str = str[:4000] + "...[truncated]"
+			}
 			detailsJSON = &str
 		}
 	}
@@ -228,8 +242,29 @@ func maskEmail(email string) string {
 			break
 		}
 	}
+	if atIndex == -1 {
+		// No @ found, just mask most of the string
+		return string(email[0]) + "***"
+	}
 	if atIndex <= 1 {
+		// @ is at position 0 or 1, show first char and domain
 		return string(email[0]) + "***" + email[atIndex:]
 	}
 	return string(email[0]) + "***" + email[atIndex:]
+}
+
+// sanitizeAuditString sanitizes a string for safe audit logging
+func sanitizeAuditString(s string, maxLen int) string {
+	if len(s) > maxLen {
+		s = s[:maxLen] + "...[truncated]"
+	}
+	// Strip control characters (except newline and tab)
+	var result strings.Builder
+	for _, r := range s {
+		if r < 32 && r != '\n' && r != '\t' {
+			continue
+		}
+		result.WriteRune(r)
+	}
+	return result.String()
 }

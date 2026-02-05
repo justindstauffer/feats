@@ -1,8 +1,10 @@
 package services
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"html"
 	"image"
 	_ "image/gif"
 	"image/jpeg"
@@ -28,6 +30,13 @@ var (
 )
 
 const MaxImagesPerPost = 4
+
+// Magic bytes for image format validation
+var imageMagicBytes = map[string][]byte{
+	"jpeg": {0xFF, 0xD8, 0xFF},
+	"png":  {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A},
+	"gif":  {0x47, 0x49, 0x46, 0x38},
+}
 
 type PostService struct {
 	db  *gorm.DB
@@ -186,8 +195,31 @@ func (s *PostService) UploadImage(postID, userID string, isAdmin bool, file io.R
 		return nil, ErrMaxImagesReached
 	}
 
+	// Read the first 8 bytes for magic byte validation
+	magicBytes := make([]byte, 8)
+	n, err := io.ReadFull(file, magicBytes)
+	if err != nil && err != io.ErrUnexpectedEOF {
+		return nil, ErrInvalidImageType
+	}
+	magicBytes = magicBytes[:n]
+
+	// Validate magic bytes
+	validFormat := false
+	for _, magic := range imageMagicBytes {
+		if len(magicBytes) >= len(magic) && bytes.Equal(magicBytes[:len(magic)], magic) {
+			validFormat = true
+			break
+		}
+	}
+	if !validFormat {
+		return nil, ErrInvalidImageType
+	}
+
+	// Prepend the magic bytes back to the reader for image decoding
+	combinedReader := io.MultiReader(bytes.NewReader(magicBytes), file)
+
 	// Validate and process image
-	img, format, err := image.Decode(file)
+	img, format, err := image.Decode(combinedReader)
 	if err != nil {
 		return nil, ErrInvalidImageType
 	}
@@ -311,7 +343,8 @@ func sanitizeText(s string, maxLen int) string {
 		s = s[:maxLen]
 	}
 
-	return s
+	// Escape any remaining HTML special characters
+	return html.EscapeString(s)
 }
 
 func stripHTMLTags(s string) string {

@@ -13,13 +13,10 @@ func CORS(cfg *config.Config) gin.HandlerFunc {
 		origin := c.GetHeader("Origin")
 
 		// For API-only backends (iOS app), we can be restrictive
-		// If ALLOWED_ORIGINS is set, check against it
-		allowedOrigins := strings.Split(cfg.GinMode, ",") // Placeholder - would use a real config value
-
-		// By default, don't allow any browser origins for API-only backend
-		// This is intentionally restrictive since we're building for iOS
+		// Only allow origins explicitly configured in ALLOWED_ORIGINS
+		// If no origins configured, deny all browser requests (secure default)
 		allowed := false
-		for _, allowedOrigin := range allowedOrigins {
+		for _, allowedOrigin := range cfg.AllowedOrigins {
 			if origin == strings.TrimSpace(allowedOrigin) {
 				allowed = true
 				break

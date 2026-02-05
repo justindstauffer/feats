@@ -75,8 +75,8 @@ func main() {
 
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(authService, auditService, cfg)
-	userHandler := handlers.NewUserHandler(userService, auditService)
-	postHandler := handlers.NewPostHandler(postService, streakService, challengeService, goalService, auditService)
+	userHandler := handlers.NewUserHandler(userService, auditService, authService)
+	postHandler := handlers.NewPostHandler(postService, streakService, challengeService, goalService, auditService, cfg)
 	activityHandler := handlers.NewActivityHandler(activityService)
 	reactionHandler := handlers.NewReactionHandler(reactionService)
 	commentHandler := handlers.NewCommentHandler(commentService)

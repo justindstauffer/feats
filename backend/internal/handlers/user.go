@@ -12,12 +12,14 @@ import (
 type UserHandler struct {
 	userService  *services.UserService
 	auditService *services.AuditService
+	authService  *services.AuthService
 }
 
-func NewUserHandler(userService *services.UserService, auditService *services.AuditService) *UserHandler {
+func NewUserHandler(userService *services.UserService, auditService *services.AuditService, authService *services.AuthService) *UserHandler {
 	return &UserHandler{
 		userService:  userService,
 		auditService: auditService,
+		authService:  authService,
 	}
 }
 
@@ -86,9 +88,7 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 
 	adminID, _ := middleware.GetCurrentUserID(c)
 
-	// Get auth service from context or create - simplified for now
-	// In production, you'd inject this properly
-	user, err := h.userService.CreateUser(input, nil)
+	user, err := h.userService.CreateUser(input, h.authService)
 	if err != nil {
 		switch err {
 		case services.ErrEmailExists:

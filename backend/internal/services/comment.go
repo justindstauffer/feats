@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"html"
 	"strings"
 	"time"
 
@@ -191,7 +192,8 @@ func sanitizeComment(s string) string {
 	// Strip HTML
 	s = stripHTML(s)
 	s = strings.TrimSpace(s)
-	return s
+	// Escape any remaining HTML special characters
+	return html.EscapeString(s)
 }
 
 func stripHTML(s string) string {

@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -35,6 +36,7 @@ type Config struct {
 	Port           string
 	GinMode        string
 	TrustedProxies []string
+	AllowedOrigins []string
 
 	// Database
 	DatabasePath string
@@ -73,8 +75,9 @@ type Config struct {
 func Load() (*Config, error) {
 	cfg := &Config{
 		// Server defaults
-		Port:    getEnv("PORT", "8080"),
-		GinMode: getEnv("GIN_MODE", "release"),
+		Port:           getEnv("PORT", "8080"),
+		GinMode:        getEnv("GIN_MODE", "release"),
+		AllowedOrigins: getStringSliceEnv("ALLOWED_ORIGINS"),
 
 		// Database defaults
 		DatabasePath: getEnv("DATABASE_PATH", "./feats.db"),
@@ -136,4 +139,19 @@ func getDurationEnv(key string, defaultValue time.Duration) time.Duration {
 		}
 	}
 	return defaultValue
+}
+
+func getStringSliceEnv(key string) []string {
+	value := os.Getenv(key)
+	if value == "" {
+		return nil
+	}
+	var result []string
+	for _, s := range strings.Split(value, ",") {
+		s = strings.TrimSpace(s)
+		if s != "" {
+			result = append(result, s)
+		}
+	}
+	return result
 }

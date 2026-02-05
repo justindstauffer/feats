@@ -39,6 +39,7 @@ const (
 	ErrCodeInvalidCredentials = "INVALID_CREDENTIALS"
 	ErrCodeTokenExpired     = "TOKEN_EXPIRED"
 	ErrCodeTokenInvalid     = "TOKEN_INVALID"
+	ErrCodeSessionExpired   = "SESSION_EXPIRED"
 )
 
 // Helper functions for responses
