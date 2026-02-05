@@ -51,8 +51,8 @@ type UpdateGroupInput struct {
 }
 
 type CreateInviteInput struct {
-	MaxUses   int           `json:"max_uses"`   // 0 = unlimited
-	ExpiresIn time.Duration `json:"expires_in"` // 0 = default (7 days)
+	MaxUses   int `json:"max_uses"`   // 0 = unlimited
+	ExpiresIn int `json:"expires_in"` // Hours until expiration, 0 = default (168 = 7 days)
 }
 
 // Group CRUD
@@ -336,9 +336,9 @@ func (s *GroupService) CreateInvite(groupID, userID string, input CreateInviteIn
 		maxUses = 1 // Default to single use
 	}
 
-	expiresIn := input.ExpiresIn
-	if expiresIn <= 0 {
-		expiresIn = 7 * 24 * time.Hour // Default 7 days
+	expiresInHours := input.ExpiresIn
+	if expiresInHours <= 0 {
+		expiresInHours = 7 * 24 // Default 7 days (168 hours)
 	}
 
 	invite := models.GroupInvite{
@@ -346,7 +346,7 @@ func (s *GroupService) CreateInvite(groupID, userID string, input CreateInviteIn
 		GroupID:   groupID,
 		Code:      GenerateInviteCode(),
 		CreatedBy: userID,
-		ExpiresAt: time.Now().Add(expiresIn),
+		ExpiresAt: time.Now().Add(time.Duration(expiresInHours) * time.Hour),
 		MaxUses:   maxUses,
 		UseCount:  0,
 		CreatedAt: time.Now(),
