@@ -141,3 +141,5 @@ temp/
 *.dSYM.zip
 *.dSYM
 debug/
+backend/api
+backend/*.tar.gz
