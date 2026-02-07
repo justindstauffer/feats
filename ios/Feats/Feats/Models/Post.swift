@@ -11,6 +11,7 @@ struct Post: Codable, Identifiable, Equatable {
     let activityType: ActivityType?
     let images: [PostImage]?
     let reactions: [Reaction]?
+    let commentCount: Int?
 
     enum CodingKeys: String, CodingKey {
         case id, description, user, images, reactions
@@ -19,10 +20,15 @@ struct Post: Codable, Identifiable, Equatable {
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case activityType = "activity_type"
+        case commentCount = "comment_count"
     }
 
     static func == (lhs: Post, rhs: Post) -> Bool {
-        lhs.id == rhs.id
+        lhs.id == rhs.id &&
+        lhs.description == rhs.description &&
+        lhs.commentCount == rhs.commentCount &&
+        lhs.reactions?.count == rhs.reactions?.count &&
+        lhs.images?.count == rhs.images?.count
     }
 }
 

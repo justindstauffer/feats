@@ -21,6 +21,12 @@ struct User: Codable, Identifiable, Equatable {
 enum UserRole: String, Codable {
     case admin
     case user
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        self = UserRole(rawValue: rawValue) ?? .user
+    }
 }
 
 struct UpdateUserRequest: Codable {

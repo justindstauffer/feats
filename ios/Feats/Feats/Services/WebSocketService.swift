@@ -391,14 +391,15 @@ final class WebSocketService {
 
     private func receiveMessage() {
         webSocketTask?.receive { [weak self] result in
-            Task { @MainActor in
+            guard let self else { return }
+            Task { @MainActor [self] in
                 switch result {
                 case .success(let message):
-                    self?.handleMessage(message)
-                    self?.receiveMessage() // Continue receiving
+                    self.handleMessage(message)
+                    self.receiveMessage() // Continue receiving
                 case .failure(let error):
                     print("WebSocket receive error: \(error)")
-                    self?.handleDisconnect()
+                    self.handleDisconnect()
                 }
             }
         }

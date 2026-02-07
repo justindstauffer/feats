@@ -46,7 +46,7 @@ struct PostCard: View {
 
             // Images
             if let images = post.images, !images.isEmpty {
-                PostImageGrid(images: images)
+                PostImageGrid(images: images, allowFullscreen: showFullContent)
             }
 
             // Description
@@ -56,17 +56,36 @@ struct PostCard: View {
                     .lineLimit(showFullContent ? nil : 3)
             }
 
-            // Reaction preview (when not showing full content)
-            if !showFullContent, let reactions = post.reactions, !reactions.isEmpty {
-                HStack(spacing: 4) {
-                    let uniqueTypes = Set(reactions.map { $0.reactionType })
-                    ForEach(Array(uniqueTypes).prefix(3), id: \.self) { type in
-                        Text(type.emoji)
-                            .font(.caption)
+            // Reactions and comments preview (when not showing full content)
+            if !showFullContent {
+                HStack(spacing: 16) {
+                    // Reactions
+                    if let reactions = post.reactions, !reactions.isEmpty {
+                        HStack(spacing: 4) {
+                            let uniqueTypes = Set(reactions.map { $0.reactionType })
+                            ForEach(Array(uniqueTypes).prefix(3), id: \.self) { type in
+                                Text(type.emoji)
+                                    .font(.caption)
+                            }
+                            Text("\(reactions.count)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                    Text("\(reactions.count)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+
+                    // Comments
+                    if let commentCount = post.commentCount, commentCount > 0 {
+                        HStack(spacing: 4) {
+                            Image(systemName: "bubble.right")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("\(commentCount)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Spacer()
                 }
             }
         }
@@ -79,34 +98,37 @@ struct PostCard: View {
 
 struct PostImageGrid: View {
     let images: [PostImage]
+    var allowFullscreen: Bool = false
+    @State private var selectedImageIndex: Int = 0
+    @State private var showPhotoViewer = false
 
     var body: some View {
         SwiftUI.Group {
             switch images.count {
             case 1:
-                singleImage(images[0])
+                singleImage(images[0], index: 0)
             case 2:
                 HStack(spacing: 4) {
-                    imageView(images[0])
-                    imageView(images[1])
+                    imageView(images[0], index: 0)
+                    imageView(images[1], index: 1)
                 }
             case 3:
                 HStack(spacing: 4) {
-                    imageView(images[0])
+                    imageView(images[0], index: 0)
                     VStack(spacing: 4) {
-                        imageView(images[1])
-                        imageView(images[2])
+                        imageView(images[1], index: 1)
+                        imageView(images[2], index: 2)
                     }
                 }
             case 4:
                 VStack(spacing: 4) {
                     HStack(spacing: 4) {
-                        imageView(images[0])
-                        imageView(images[1])
+                        imageView(images[0], index: 0)
+                        imageView(images[1], index: 1)
                     }
                     HStack(spacing: 4) {
-                        imageView(images[2])
-                        imageView(images[3])
+                        imageView(images[2], index: 2)
+                        imageView(images[3], index: 3)
                     }
                 }
             default:
@@ -114,16 +136,35 @@ struct PostImageGrid: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .fullScreenCover(isPresented: $showPhotoViewer) {
+            PhotoViewerView(images: images, selectedIndex: selectedImageIndex)
+        }
     }
 
-    private func singleImage(_ image: PostImage) -> some View {
+    private func singleImage(_ image: PostImage, index: Int) -> some View {
         AuthenticatedImage(imageId: image.id)
             .aspectRatio(4/3, contentMode: .fit)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if allowFullscreen {
+                    selectedImageIndex = index
+                    showPhotoViewer = true
+                }
+            }
+            .allowsHitTesting(allowFullscreen)
     }
 
-    private func imageView(_ image: PostImage) -> some View {
+    private func imageView(_ image: PostImage, index: Int) -> some View {
         AuthenticatedImage(imageId: image.id)
             .aspectRatio(1, contentMode: .fit)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if allowFullscreen {
+                    selectedImageIndex = index
+                    showPhotoViewer = true
+                }
+            }
+            .allowsHitTesting(allowFullscreen)
     }
 }
 
@@ -154,7 +195,8 @@ struct PostImageGrid: View {
             createdAt: Date()
         ),
         images: nil,
-        reactions: nil
+        reactions: nil,
+        commentCount: 3
     ))
     .padding()
 }

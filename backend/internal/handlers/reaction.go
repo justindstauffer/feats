@@ -98,7 +98,7 @@ func (h *ReactionHandler) AddReaction(c *gin.Context) {
 			PostID:       postID,
 			UserID:       userID,
 			UserName:     user.Name,
-			ReactionType: string(reaction.ReactionType),
+			ReactionType: reaction.ReactionType.String(),
 		}
 		if event, err := websocket.NewEvent(websocket.EventReactionAdded, groupID, userID, payload); err == nil {
 			h.wsHub.BroadcastToGroup(event)

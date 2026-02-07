@@ -16,6 +16,9 @@ type Post struct {
 	UpdatedAt      time.Time      `gorm:"type:datetime;not null" json:"updated_at"`
 	DeletedAt      gorm.DeletedAt `gorm:"type:datetime;index" json:"-"`
 
+	// Computed fields (not stored in DB)
+	CommentCount int `gorm:"-" json:"comment_count"`
+
 	// Relationships
 	Group        Group        `gorm:"foreignKey:GroupID" json:"-"`
 	User         User         `gorm:"foreignKey:UserID" json:"user,omitempty"`

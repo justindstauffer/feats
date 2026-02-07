@@ -18,6 +18,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jstauff/feats-api/internal/config"
 	"github.com/jstauff/feats-api/internal/models"
+	"github.com/rwcarlsen/goexif/exif"
+	"golang.org/x/image/draw"
 	"gorm.io/gorm"
 )
 
@@ -29,7 +31,10 @@ var (
 	ErrNotAuthorized    = errors.New("not authorized")
 )
 
-const MaxImagesPerPost = 4
+const (
+	MaxImagesPerPost   = 4
+	MaxImageDimension  = 2048 // Max width or height in pixels
+)
 
 // Magic bytes for image format validation
 var imageMagicBytes = map[string][]byte{
@@ -76,11 +81,39 @@ func (s *PostService) ListPosts(groupID string, page, perPage int) ([]models.Pos
 		Preload("Images", func(db *gorm.DB) *gorm.DB {
 			return db.Order("display_order ASC")
 		}).
+		Preload("Reactions").
 		Order("created_at DESC").
 		Offset(offset).
 		Limit(perPage).
 		Find(&posts).Error; err != nil {
 		return nil, 0, err
+	}
+
+	// Get comment counts for all posts in a single query
+	if len(posts) > 0 {
+		postIDs := make([]string, len(posts))
+		for i, post := range posts {
+			postIDs[i] = post.ID
+		}
+
+		var counts []struct {
+			PostID string
+			Count  int
+		}
+		s.db.Model(&models.Comment{}).
+			Select("post_id, COUNT(*) as count").
+			Where("post_id IN ?", postIDs).
+			Group("post_id").
+			Scan(&counts)
+
+		countMap := make(map[string]int)
+		for _, c := range counts {
+			countMap[c.PostID] = c.Count
+		}
+
+		for i := range posts {
+			posts[i].CommentCount = countMap[posts[i].ID]
+		}
 	}
 
 	return posts, total, nil
@@ -180,6 +213,152 @@ func (s *PostService) DeletePost(groupID, id, userID string, isAdmin bool) error
 	return s.db.Delete(&post).Error
 }
 
+// readExifOrientation reads the EXIF orientation tag from image data
+// Returns orientation value 1-8, or 1 (normal) if not found
+func readExifOrientation(data []byte) int {
+	x, err := exif.Decode(bytes.NewReader(data))
+	if err != nil {
+		return 1 // Default to normal orientation
+	}
+
+	orientTag, err := x.Get(exif.Orientation)
+	if err != nil {
+		return 1
+	}
+
+	orient, err := orientTag.Int(0)
+	if err != nil {
+		return 1
+	}
+
+	return orient
+}
+
+// fixOrientation applies EXIF orientation transformation to an image
+// EXIF orientation values:
+// 1 = Normal, 2 = Flip H, 3 = Rotate 180, 4 = Flip V
+// 5 = Transpose, 6 = Rotate 90 CW, 7 = Transverse, 8 = Rotate 90 CCW
+func fixOrientation(img image.Image, orientation int) image.Image {
+	switch orientation {
+	case 1:
+		return img // Normal - no change
+	case 2:
+		return flipHorizontal(img)
+	case 3:
+		return rotate180(img)
+	case 4:
+		return flipVertical(img)
+	case 5:
+		return transpose(img)
+	case 6:
+		return rotate90CW(img)
+	case 7:
+		return transverse(img)
+	case 8:
+		return rotate90CCW(img)
+	default:
+		return img
+	}
+}
+
+func flipHorizontal(img image.Image) image.Image {
+	bounds := img.Bounds()
+	result := image.NewRGBA(bounds)
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			result.Set(bounds.Max.X-1-x, y, img.At(x, y))
+		}
+	}
+	return result
+}
+
+func flipVertical(img image.Image) image.Image {
+	bounds := img.Bounds()
+	result := image.NewRGBA(bounds)
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			result.Set(x, bounds.Max.Y-1-y, img.At(x, y))
+		}
+	}
+	return result
+}
+
+func rotate90CW(img image.Image) image.Image {
+	bounds := img.Bounds()
+	w, h := bounds.Dx(), bounds.Dy()
+	result := image.NewRGBA(image.Rect(0, 0, h, w))
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			result.Set(h-1-y, x, img.At(x, y))
+		}
+	}
+	return result
+}
+
+func rotate90CCW(img image.Image) image.Image {
+	bounds := img.Bounds()
+	w, h := bounds.Dx(), bounds.Dy()
+	result := image.NewRGBA(image.Rect(0, 0, h, w))
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			result.Set(y, w-1-x, img.At(x, y))
+		}
+	}
+	return result
+}
+
+func rotate180(img image.Image) image.Image {
+	bounds := img.Bounds()
+	result := image.NewRGBA(bounds)
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			result.Set(bounds.Max.X-1-x, bounds.Max.Y-1-y, img.At(x, y))
+		}
+	}
+	return result
+}
+
+func transpose(img image.Image) image.Image {
+	// Rotate 90 CW then flip horizontal
+	return flipHorizontal(rotate90CW(img))
+}
+
+func transverse(img image.Image) image.Image {
+	// Rotate 90 CCW then flip horizontal
+	return flipHorizontal(rotate90CCW(img))
+}
+
+// resizeIfNeeded scales down an image if it exceeds MaxImageDimension
+// Maintains aspect ratio, only shrinks (never enlarges)
+func resizeIfNeeded(img image.Image) image.Image {
+	bounds := img.Bounds()
+	w, h := bounds.Dx(), bounds.Dy()
+
+	// Find the longest side
+	maxSide := max(w, h)
+
+	// If within limits, return original
+	if maxSide <= MaxImageDimension {
+		return img
+	}
+
+	// Calculate new dimensions maintaining aspect ratio
+	var newW, newH int
+	if w > h {
+		newW = MaxImageDimension
+		newH = h * MaxImageDimension / w
+	} else {
+		newH = MaxImageDimension
+		newW = w * MaxImageDimension / h
+	}
+
+	// Create resized image using high-quality CatmullRom interpolation
+	dst := image.NewRGBA(image.Rect(0, 0, newW, newH))
+	draw.CatmullRom.Scale(dst, dst.Bounds(), img, bounds, draw.Over, nil)
+
+	return dst
+}
+
 // UploadImage uploads an image to a post
 func (s *PostService) UploadImage(groupID, postID, userID string, isAdmin bool, file io.Reader, filename string) (*models.PostImage, error) {
 	var post models.Post
@@ -197,18 +376,19 @@ func (s *PostService) UploadImage(groupID, postID, userID string, isAdmin bool, 
 		return nil, ErrMaxImagesReached
 	}
 
-	// Read the first 8 bytes for magic byte validation
-	magicBytes := make([]byte, 8)
-	n, err := io.ReadFull(file, magicBytes)
-	if err != nil && err != io.ErrUnexpectedEOF {
+	// Read all image data into buffer (needed for EXIF reading and decoding)
+	imageData, err := io.ReadAll(file)
+	if err != nil {
 		return nil, ErrInvalidImageType
 	}
-	magicBytes = magicBytes[:n]
 
 	// Validate magic bytes
+	if len(imageData) < 8 {
+		return nil, ErrInvalidImageType
+	}
 	validFormat := false
 	for _, magic := range imageMagicBytes {
-		if len(magicBytes) >= len(magic) && bytes.Equal(magicBytes[:len(magic)], magic) {
+		if len(imageData) >= len(magic) && bytes.Equal(imageData[:len(magic)], magic) {
 			validFormat = true
 			break
 		}
@@ -217,11 +397,11 @@ func (s *PostService) UploadImage(groupID, postID, userID string, isAdmin bool, 
 		return nil, ErrInvalidImageType
 	}
 
-	// Prepend the magic bytes back to the reader for image decoding
-	combinedReader := io.MultiReader(bytes.NewReader(magicBytes), file)
+	// Read EXIF orientation before decoding (only works for JPEG)
+	orientation := readExifOrientation(imageData)
 
-	// Validate and process image
-	img, format, err := image.Decode(combinedReader)
+	// Decode the image
+	img, format, err := image.Decode(bytes.NewReader(imageData))
 	if err != nil {
 		return nil, ErrInvalidImageType
 	}
@@ -230,6 +410,12 @@ func (s *PostService) UploadImage(groupID, postID, userID string, isAdmin bool, 
 	if format != "jpeg" && format != "png" && format != "gif" {
 		return nil, ErrInvalidImageType
 	}
+
+	// Apply EXIF orientation fix
+	img = fixOrientation(img, orientation)
+
+	// Resize if larger than max dimension
+	img = resizeIfNeeded(img)
 
 	// Generate file path
 	imageID := uuid.New().String()
@@ -247,7 +433,7 @@ func (s *PostService) UploadImage(groupID, postID, userID string, isAdmin bool, 
 	}
 	defer outFile.Close()
 
-	// Encode as JPEG (re-encoding for security)
+	// Encode as JPEG (re-encoding for security, orientation already fixed)
 	if err := jpeg.Encode(outFile, img, &jpeg.Options{Quality: 85}); err != nil {
 		os.Remove(filePath)
 		return nil, err

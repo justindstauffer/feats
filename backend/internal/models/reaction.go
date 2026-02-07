@@ -1,6 +1,7 @@
 package models
 
 import (
+	"strconv"
 	"time"
 )
 
@@ -13,6 +14,11 @@ const (
 	ReactionStrong ReactionType = 4
 	ReactionClap   ReactionType = 5
 )
+
+// String returns the string representation of the reaction type
+func (rt ReactionType) String() string {
+	return strconv.Itoa(int(rt))
+}
 
 var ReactionEmojis = map[ReactionType]string{
 	ReactionLike:   "👍",

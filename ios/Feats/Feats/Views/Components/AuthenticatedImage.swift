@@ -7,6 +7,10 @@ struct AuthenticatedImage: View {
     @State private var image: UIImage?
     @State private var isLoading = true
     @State private var hasFailed = false
+    @State private var retryCount = 0
+
+    private let maxRetries = 3
+    private let retryDelay: UInt64 = 2_000_000_000 // 2 seconds in nanoseconds
 
     var body: some View {
         GeometryReader { geometry in
@@ -34,7 +38,7 @@ struct AuthenticatedImage: View {
             .frame(width: geometry.size.width, height: geometry.size.height)
             .clipped()
         }
-        .task {
+        .task(id: imageId) {
             await loadImage()
         }
     }
@@ -50,13 +54,26 @@ struct AuthenticatedImage: View {
             let data = try await APIClient.shared.fetchImageData(from: url)
             if let uiImage = UIImage(data: data) {
                 self.image = uiImage
+                hasFailed = false
             } else {
-                hasFailed = true
+                await handleFailure()
             }
         } catch {
-            hasFailed = true
+            await handleFailure()
         }
 
         isLoading = false
+    }
+
+    private func handleFailure() async {
+        if retryCount < maxRetries {
+            retryCount += 1
+            // Wait before retrying (image might still be uploading)
+            try? await Task.sleep(nanoseconds: retryDelay)
+            isLoading = true
+            await loadImage()
+        } else {
+            hasFailed = true
+        }
     }
 }

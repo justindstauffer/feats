@@ -45,6 +45,7 @@ class FeedViewModel {
                 hasMorePages = false
             }
         } catch {
+            print("❌ Feed loading error: \(error)")
             errorMessage = error.localizedDescription
         }
 
@@ -125,10 +126,13 @@ struct FeedView: View {
                 }
             }
             .onChange(of: appState.feedNeedsRefresh) { _, needsRefresh in
+                // Only auto-refresh if we're visible (not covered by another view)
+                // The onAppear will handle refresh when coming back from detail view
                 if needsRefresh, let groupId = currentGroupId {
                     Task {
                         await viewModel.loadPosts(groupId: groupId, refresh: true)
-                        appState.feedNeedsRefresh = false
+                        // Don't clear the flag here - let onAppear handle it
+                        // This ensures we refresh again when returning from detail view
                     }
                 }
             }
