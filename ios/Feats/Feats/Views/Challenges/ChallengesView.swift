@@ -164,6 +164,14 @@ struct ChallengesView: View {
                     }
                 }
             }
+            .onChange(of: appState.challengesNeedRefresh) { _, needsRefresh in
+                if needsRefresh, let groupId = currentGroupId {
+                    Task {
+                        await viewModel.loadChallenges(groupId: groupId)
+                        appState.challengesNeedRefresh = false
+                    }
+                }
+            }
         }
     }
 

@@ -371,6 +371,8 @@ final class WebSocketService {
     private func handleEvent(_ event: WebSocketEvent) {
         let decoder = JSONDecoder()
 
+        print("WebSocket: Received event - \(event.type.rawValue) in group \(event.groupId)")
+
         switch event.type {
         case .postCreated:
             if let payload = try? decoder.decode(PostCreatedPayload.self, from: event.payload) {

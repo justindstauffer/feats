@@ -84,6 +84,14 @@ struct LeaderboardView: View {
                     }
                 }
             }
+            .onChange(of: appState.streaksNeedRefresh) { _, needsRefresh in
+                if needsRefresh, let groupId = currentGroupId {
+                    Task {
+                        await viewModel.loadLeaderboard(groupId: groupId)
+                        appState.streaksNeedRefresh = false
+                    }
+                }
+            }
             .sheet(isPresented: $showGroupSwitcher) {
                 GroupSwitcherView()
             }

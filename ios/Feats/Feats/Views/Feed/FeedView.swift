@@ -124,6 +124,14 @@ struct FeedView: View {
                     }
                 }
             }
+            .onChange(of: appState.feedNeedsRefresh) { _, needsRefresh in
+                if needsRefresh, let groupId = currentGroupId {
+                    Task {
+                        await viewModel.loadPosts(groupId: groupId, refresh: true)
+                        appState.feedNeedsRefresh = false
+                    }
+                }
+            }
             .sheet(isPresented: $showGroupSwitcher) {
                 GroupSwitcherView()
             }
