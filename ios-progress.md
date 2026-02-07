@@ -10,7 +10,7 @@ This document tracks the development progress of the Feats iOS app. Use this as 
 - **Framework:** SwiftUI
 - **State Management:** @Observable (iOS 17+)
 - **Networking:** URLSession with async/await
-- **Real-Time:** WebSockets (planned)
+- **Real-Time:** WebSockets (implemented)
 - **Secure Storage:** Keychain Services
 
 ## Project Structure
@@ -38,7 +38,8 @@ ios/
     │   ├── KeychainService.swift  # Secure token storage
     │   ├── APIClient.swift        # HTTP client with auth
     │   ├── AuthService.swift      # Authentication state
-    │   ├── GroupService.swift     # Group state management (NEW)
+    │   ├── GroupService.swift     # Group state management
+    │   ├── WebSocketService.swift # Real-time updates (NEW)
     │   └── AppState.swift         # App-wide state management
     ├── Views/
     │   ├── MainTabView.swift      # Tab navigation
@@ -312,7 +313,7 @@ Moved `.refreshable` modifier directly onto the `List` in `ChallengesView` inste
 - [x] Keyboard dismissal on CreatePostView (Done button + scroll dismiss)
 - [x] App icon added (trophy emoji)
 
-### Real-Time Updates (WebSockets)
+### Real-Time Updates (WebSockets) - COMPLETED
 - [x] Backend WebSocket hub infrastructure (`internal/websocket/hub.go`)
 - [x] Backend WebSocket client handling (`internal/websocket/client.go`)
 - [x] Backend event types and broadcasting (`internal/websocket/events.go`)
@@ -322,163 +323,112 @@ Moved `.refreshable` modifier directly onto the `List` in `ChallengesView` inste
 - [x] iOS event type definitions and payload models
 - [x] iOS AuthService connects/disconnects WebSocket on auth changes
 - [x] iOS AppState handles WebSocket events for auto-refresh
+- [x] Views refresh immediately when WebSocket events received (onChange handlers)
+- [x] App lifecycle handling (pause on background, resume on foreground)
+- [x] Group subscription management (subscribe/unsubscribe on group switch)
+- [x] Connection state tracking with reconnection logic
+- [x] Nginx configured for WebSocket proxying
+
+**WebSocket Endpoint:** `wss://feats-api.jstauff.com/ws?token=<jwt>`
+
+**Nginx Config Required:**
+```nginx
+location /ws {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 86400;
+}
+```
 
 ---
 
-## Completed: Real-Time Updates (WebSockets)
+## WebSocket Implementation Details
 
 ### Overview
-Implement WebSocket connections for instant updates across the app. When someone posts, joins a group, or completes a challenge, all connected clients see the update immediately.
+Real-time updates via WebSocket connections. When someone posts, reacts, comments, or joins a challenge, all connected clients in the same group see updates immediately.
 
 ### Backend Implementation
 
-#### Phase 1: WebSocket Infrastructure
-**New Files:**
-- `internal/websocket/hub.go` - Connection hub managing all clients
-- `internal/websocket/client.go` - Individual WebSocket client handling
-- `internal/websocket/events.go` - Event types and message structures
-- `internal/handlers/websocket.go` - WebSocket upgrade handler
+**Files Created:**
+| File | Description |
+|------|-------------|
+| `internal/websocket/hub.go` | Central hub managing all connections and group subscriptions |
+| `internal/websocket/client.go` | Individual WebSocket client with read/write pumps |
+| `internal/websocket/events.go` | Event types and payload structures |
+| `internal/handlers/websocket.go` | HTTP upgrade handler with JWT auth via query param |
 
-**Hub Design:**
-```go
-type Hub struct {
-    // Clients mapped by userID -> set of connections (user can have multiple devices)
-    clients map[string]map[*Client]bool
-
-    // Group subscriptions: groupID -> set of userIDs
-    groupSubscriptions map[string]map[string]bool
-
-    // Channels for client management
-    register   chan *Client
-    unregister chan *Client
-    broadcast  chan *Event
-}
-```
+**Files Modified:**
+| File | Changes |
+|------|---------|
+| `cmd/api/main.go` | Initialize hub, add `/ws` route |
+| `internal/handlers/post.go` | Broadcast `post.created`, `post.deleted` |
+| `internal/handlers/reaction.go` | Broadcast `reaction.added`, `reaction.removed` |
+| `internal/handlers/comment.go` | Broadcast `comment.created`, `comment.deleted` |
+| `internal/handlers/challenge.go` | Broadcast `challenge.created`, `challenge.joined`, `challenge.left` |
+| `internal/handlers/group.go` | Broadcast `member.joined`, `member.left` |
+| `go.mod` | Added `github.com/gorilla/websocket` dependency |
 
 **Event Types:**
-```go
-type EventType string
-
-const (
-    EventPostCreated       EventType = "post.created"
-    EventPostDeleted       EventType = "post.deleted"
-    EventReactionAdded     EventType = "reaction.added"
-    EventReactionRemoved   EventType = "reaction.removed"
-    EventCommentCreated    EventType = "comment.created"
-    EventChallengeJoined   EventType = "challenge.joined"
-    EventChallengeProgress EventType = "challenge.progress"
-    EventMemberJoined      EventType = "member.joined"
-    EventMemberLeft        EventType = "member.left"
-)
-
-type Event struct {
-    Type    EventType       `json:"type"`
-    GroupID string          `json:"group_id"`
-    Payload json.RawMessage `json:"payload"`
-}
-```
-
-#### Phase 2: Integration with Existing Handlers
-Modify existing handlers to broadcast events after successful operations:
-- `PostHandler.CreatePost` → broadcast `post.created`
-- `PostHandler.DeletePost` → broadcast `post.deleted`
-- `ReactionHandler.AddReaction` → broadcast `reaction.added`
-- `CommentHandler.CreateComment` → broadcast `comment.created`
-- `ChallengeHandler.JoinChallenge` → broadcast `challenge.joined`
-- `GroupHandler.RedeemInvite` → broadcast `member.joined`
-
-#### Phase 3: Authentication & Security
-- WebSocket connection requires valid JWT token (passed as query param or first message)
-- Validate user is member of groups they subscribe to
-- Rate limit WebSocket messages
-- Handle connection timeouts and reconnection
+- `post.created` / `post.deleted`
+- `reaction.added` / `reaction.removed`
+- `comment.created` / `comment.deleted`
+- `challenge.created` / `challenge.joined` / `challenge.left`
+- `member.joined` / `member.left`
 
 ### iOS Implementation
 
-#### Phase 1: WebSocket Service
-**New File:** `Services/WebSocketService.swift`
+**Files Created:**
+| File | Description |
+|------|-------------|
+| `Services/WebSocketService.swift` | WebSocket client with event handling, reconnection, lifecycle |
 
+**Files Modified:**
+| File | Changes |
+|------|---------|
+| `FeatsApp.swift` | Handle ScenePhase for pause/resume WebSocket |
+| `AuthService.swift` | Connect WebSocket on login, disconnect on logout |
+| `GroupService.swift` | Call `switchToGroup()` when changing groups |
+| `AppState.swift` | Set up WebSocket event handlers for auto-refresh |
+| `APIClient.swift` | Added `webSocketURL()` method |
+| `FeedView.swift` | Added `onChange` to refresh on flag change |
+| `ChallengesView.swift` | Added `onChange` to refresh on flag change |
+| `LeaderboardView.swift` | Added `onChange` to refresh on flag change |
+
+**Connection States:**
 ```swift
-@MainActor
-@Observable
-class WebSocketService {
-    static let shared = WebSocketService()
-
-    private var webSocket: URLSessionWebSocketTask?
-    private var isConnected = false
-
-    func connect(token: String)
-    func disconnect()
-    func subscribe(to groupId: String)
-    func unsubscribe(from groupId: String)
-
-    // Event handlers - these update the relevant services
-    private func handleEvent(_ event: WebSocketEvent)
+enum WebSocketConnectionState: Equatable {
+    case disconnected
+    case connecting
+    case connected
+    case reconnecting(attempt: Int, maxAttempts: Int)
+    case failed
 }
 ```
 
-#### Phase 2: State Updates
-When events arrive, update the relevant observable state:
-- `post.created` → Prepend to FeedViewModel posts
-- `member.joined` → Update GroupService member count
-- `challenge.progress` → Update ChallengeViewModel participant progress
-- etc.
+**Key Methods:**
+- `connect()` - Connect and subscribe to current group
+- `disconnect()` - Clean disconnect (logout)
+- `pause()` - Pause when app backgrounds
+- `resume()` - Resume when app foregrounds
+- `switchToGroup(_ groupId)` - Unsubscribe old, subscribe new
+- `retryConnection()` - Manual retry after failure
 
-#### Phase 3: Connection Management
-- Connect when app becomes active
-- Disconnect when app backgrounds (or keep alive with reduced frequency)
-- Automatic reconnection with exponential backoff
-- Handle authentication expiry during connection
-
-### Implementation Order
-
-1. **Backend Hub & Client** - Basic WebSocket infrastructure
-2. **Backend Auth** - JWT validation for WebSocket connections
-3. **Backend Events** - Event types and broadcasting
-4. **iOS WebSocketService** - Connect/disconnect/reconnect
-5. **iOS Event Handling** - Parse events and update state
-6. **Integration** - Hook up handlers to broadcast events
-7. **Testing** - Multi-device, reconnection, edge cases
-
-### Files to Create
-
-**Backend:**
-| File | Description |
-|------|-------------|
-| `internal/websocket/hub.go` | Central hub managing all connections |
-| `internal/websocket/client.go` | Individual client connection handler |
-| `internal/websocket/events.go` | Event types and structures |
-| `internal/handlers/websocket.go` | HTTP upgrade to WebSocket |
-
-**iOS:**
-| File | Description |
-|------|-------------|
-| `Services/WebSocketService.swift` | WebSocket client and event handling |
-| `Models/WebSocketEvent.swift` | Event models for decoding |
-
-### Files to Modify
-
-**Backend:**
-- `cmd/api/main.go` - Add WebSocket route
-- `internal/handlers/post.go` - Broadcast post events
-- `internal/handlers/reaction.go` - Broadcast reaction events
-- `internal/handlers/comment.go` - Broadcast comment events
-- `internal/handlers/challenge.go` - Broadcast challenge events
-- `internal/handlers/group.go` - Broadcast member events
-
-**iOS:**
-- `FeatsApp.swift` - Initialize WebSocketService
-- `AuthService.swift` - Connect/disconnect WebSocket on auth changes
-- `GroupService.swift` - Subscribe/unsubscribe to groups
-- `Views/Feed/FeedView.swift` - React to post events
-- `Views/Challenges/ChallengesView.swift` - React to challenge events
+**Reconnection Behavior:**
+| Scenario | Behavior |
+|----------|----------|
+| Connection drops | Auto-reconnect with exponential backoff (2s, 4s, 8s, 16s, 30s max) |
+| 5 consecutive failures | Stops, state = `.failed`, user can call `retryConnection()` |
+| App backgrounds | Pauses cleanly (no reconnect attempts wasted) |
+| App foregrounds | Resumes immediately, resets retry counter |
 
 ---
 
-## Push Notifications (APNs)
+## Next Feature: Push Notifications (APNs)
 
 ### Overview
-Push notifications alert users when something happens while the app is closed or backgrounded. Works alongside WebSockets - WebSockets for live updates, push for background alerts.
+Push notifications alert users when something happens while the app is closed or backgrounded. Works alongside WebSockets - WebSockets for live updates when app is open, push notifications for background alerts.
 
 ### What Triggers Notifications
 - Someone posts in your group
