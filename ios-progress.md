@@ -464,6 +464,162 @@ When events arrive, update the relevant observable state:
 
 ---
 
+## Push Notifications (APNs)
+
+### Overview
+Push notifications alert users when something happens while the app is closed or backgrounded. Works alongside WebSockets - WebSockets for live updates, push for background alerts.
+
+### What Triggers Notifications
+- Someone posts in your group
+- Someone reacts to your post
+- Someone comments on your post
+- Someone joins a challenge you're in
+- Someone completes a challenge you're in
+- New member joins your group
+- Challenge you're in is about to end (reminder)
+
+### Apple Developer Setup
+
+1. **Create APNs Key** (Apple Developer Portal):
+   - Certificates, Identifiers & Profiles → Keys → +
+   - Enable "Apple Push Notifications service (APNs)"
+   - Download the `.p8` file (save securely - can only download once)
+   - Note the Key ID and Team ID
+
+2. **Enable Push in App ID**:
+   - Identifiers → Select Feats app ID
+   - Enable "Push Notifications" capability
+
+3. **Add to Xcode**:
+   - Target → Signing & Capabilities → + Capability → Push Notifications
+
+### Backend Implementation
+
+**New Files:**
+- `internal/push/apns.go` - APNs client for sending notifications
+- `internal/push/notifications.go` - Notification templates and logic
+- `internal/models/device.go` - Device token storage (already exists partially)
+
+**APNs Client:**
+```go
+type APNsClient struct {
+    keyID      string
+    teamID     string
+    privateKey *ecdsa.PrivateKey
+    bundleID   string
+    production bool
+}
+
+func (c *APNsClient) Send(token string, notification Notification) error
+```
+
+**Notification Types:**
+```go
+type NotificationType string
+
+const (
+    NotifyNewPost       NotificationType = "new_post"
+    NotifyReaction      NotificationType = "reaction"
+    NotifyComment       NotificationType = "comment"
+    NotifyChallengeJoin NotificationType = "challenge_join"
+    NotifyMemberJoined  NotificationType = "member_joined"
+)
+```
+
+**Environment Variables:**
+```
+APNS_KEY_PATH=/path/to/AuthKey_XXXXXX.p8
+APNS_KEY_ID=XXXXXXXXXX
+APNS_TEAM_ID=XXXXXXXXXX
+APNS_BUNDLE_ID=com.jstauff.Feats
+APNS_PRODUCTION=false  # true for App Store builds
+```
+
+### iOS Implementation
+
+**Request Permission** (on first launch or login):
+```swift
+func requestNotificationPermission() async -> Bool {
+    let center = UNUserNotificationCenter.current()
+    do {
+        let granted = try await center.requestAuthorization(options: [.alert, .badge, .sound])
+        if granted {
+            await MainActor.run {
+                UIApplication.shared.registerForRemoteNotifications()
+            }
+        }
+        return granted
+    } catch {
+        return false
+    }
+}
+```
+
+**Register Device Token:**
+```swift
+// In AppDelegate or FeatsApp
+func application(_ application: UIApplication,
+                 didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+    let token = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
+    Task {
+        try? await APIClient.shared.request(
+            endpoint: "/devices",
+            method: .post,
+            body: ["token": token, "platform": "ios"]
+        )
+    }
+}
+```
+
+**Handle Notifications:**
+```swift
+// Tap notification → open relevant screen
+func userNotificationCenter(_ center: UNUserNotificationCenter,
+                            didReceive response: UNNotificationResponse) async {
+    let userInfo = response.notification.request.content.userInfo
+    // Navigate to post, challenge, etc. based on notification type
+}
+```
+
+### Files to Create
+
+**Backend:**
+| File | Description |
+|------|-------------|
+| `internal/push/apns.go` | APNs HTTP/2 client |
+| `internal/push/notifications.go` | Notification content builders |
+
+**iOS:**
+| File | Description |
+|------|-------------|
+| `Services/NotificationService.swift` | Permission, registration, handling |
+
+### Files to Modify
+
+**Backend:**
+- `internal/handlers/post.go` - Send push after post created
+- `internal/handlers/reaction.go` - Send push to post owner
+- `internal/handlers/comment.go` - Send push to post owner
+- `internal/handlers/challenge.go` - Send push to participants
+- `internal/handlers/group.go` - Send push on member joined
+- `.env.production` - Add APNs configuration
+
+**iOS:**
+- `FeatsApp.swift` - Set up notification delegate
+- `AuthService.swift` - Register device on login, unregister on logout
+
+### Implementation Order
+
+1. **Apple Developer Setup** - Create key, enable capabilities
+2. **Backend APNs Client** - HTTP/2 client with JWT auth
+3. **Backend Device Storage** - Store/remove device tokens
+4. **iOS Permission & Registration** - Request permission, send token
+5. **Backend Notification Triggers** - Send on post/reaction/comment
+6. **iOS Deep Linking** - Tap notification → navigate to content
+7. **Testing** - TestFlight with production APNs
+
+---
+
 ## Future Session: Features & Improvements
 
 ### Challenge Participants View
