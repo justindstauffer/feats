@@ -13,6 +13,7 @@ import (
 	"github.com/jstauff/feats-api/internal/middleware"
 	"github.com/jstauff/feats-api/internal/models"
 	"github.com/jstauff/feats-api/internal/services"
+	"github.com/jstauff/feats-api/internal/websocket"
 )
 
 type PostHandler struct {
@@ -22,6 +23,7 @@ type PostHandler struct {
 	goalService      *services.GoalService
 	auditService     *services.AuditService
 	cfg              *config.Config
+	wsHub            *websocket.Hub
 }
 
 func NewPostHandler(
@@ -31,6 +33,7 @@ func NewPostHandler(
 	goalService *services.GoalService,
 	auditService *services.AuditService,
 	cfg *config.Config,
+	wsHub *websocket.Hub,
 ) *PostHandler {
 	return &PostHandler{
 		postService:      postService,
@@ -39,6 +42,7 @@ func NewPostHandler(
 		goalService:      goalService,
 		auditService:     auditService,
 		cfg:              cfg,
+		wsHub:            wsHub,
 	}
 }
 
@@ -122,6 +126,24 @@ func (h *PostHandler) CreatePost(c *gin.Context) {
 	// Update goal progress for this group
 	h.goalService.UpdateProgressForActivity(groupID, userID, input.ActivityTypeID)
 
+	// Broadcast post.created event via WebSocket
+	if h.wsHub != nil {
+		user, _ := middleware.GetCurrentUser(c)
+		payload := websocket.PostCreatedPayload{
+			PostID:         post.ID,
+			UserID:         post.UserID,
+			UserName:       user.Name,
+			ActivityTypeID: post.ActivityTypeID,
+			ActivityName:   post.ActivityType.Name,
+			ActivityIcon:   getActivityIcon(post.ActivityType.Icon),
+			Description:    getDescription(post.Description),
+			ImageCount:     len(post.Images),
+		}
+		if event, err := websocket.NewEvent(websocket.EventPostCreated, groupID, userID, payload); err == nil {
+			h.wsHub.BroadcastToGroup(event)
+		}
+	}
+
 	c.JSON(http.StatusCreated, models.SuccessResponse(post))
 }
 
@@ -192,6 +214,14 @@ func (h *PostHandler) DeletePost(c *gin.Context) {
 			))
 		}
 		return
+	}
+
+	// Broadcast post.deleted event via WebSocket
+	if h.wsHub != nil {
+		payload := websocket.PostDeletedPayload{PostID: postID}
+		if event, err := websocket.NewEvent(websocket.EventPostDeleted, groupID, userID, payload); err == nil {
+			h.wsHub.BroadcastToGroup(event)
+		}
 	}
 
 	c.JSON(http.StatusOK, models.SuccessResponse(gin.H{
@@ -393,4 +423,18 @@ func parseInt(s string) int {
 
 func getFileExtension(filename string) string {
 	return filepath.Ext(filename)
+}
+
+func getActivityIcon(icon *string) string {
+	if icon != nil {
+		return *icon
+	}
+	return ""
+}
+
+func getDescription(desc *string) string {
+	if desc != nil {
+		return *desc
+	}
+	return ""
 }

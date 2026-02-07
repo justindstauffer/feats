@@ -10,6 +10,7 @@ import (
 	"github.com/jstauff/feats-api/internal/handlers"
 	"github.com/jstauff/feats-api/internal/middleware"
 	"github.com/jstauff/feats-api/internal/services"
+	"github.com/jstauff/feats-api/internal/websocket"
 )
 
 func main() {
@@ -75,18 +76,23 @@ func main() {
 	goalService := services.NewGoalService(db, cfg)
 	auditService := services.NewAuditService(db)
 
+	// Initialize WebSocket hub
+	wsHub := websocket.NewHub()
+	go wsHub.Run()
+
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(authService, userService, betaInviteService, auditService, cfg)
 	userHandler := handlers.NewUserHandler(userService, auditService, authService)
-	groupHandler := handlers.NewGroupHandler(groupService, auditService)
+	groupHandler := handlers.NewGroupHandler(groupService, auditService, wsHub)
 	betaInviteHandler := handlers.NewBetaInviteHandler(betaInviteService)
-	postHandler := handlers.NewPostHandler(postService, streakService, challengeService, goalService, auditService, cfg)
+	postHandler := handlers.NewPostHandler(postService, streakService, challengeService, goalService, auditService, cfg, wsHub)
 	activityHandler := handlers.NewActivityHandler(activityService)
-	reactionHandler := handlers.NewReactionHandler(reactionService)
-	commentHandler := handlers.NewCommentHandler(commentService)
+	reactionHandler := handlers.NewReactionHandler(reactionService, wsHub)
+	commentHandler := handlers.NewCommentHandler(commentService, wsHub)
 	streakHandler := handlers.NewStreakHandler(streakService)
-	challengeHandler := handlers.NewChallengeHandler(challengeService)
+	challengeHandler := handlers.NewChallengeHandler(challengeService, wsHub)
 	goalHandler := handlers.NewGoalHandler(goalService)
+	wsHandler := handlers.NewWebSocketHandler(wsHub, authService, groupService)
 
 	// Initialize middleware
 	authMiddleware := middleware.NewAuthMiddleware(authService, cfg)
@@ -107,6 +113,9 @@ func main() {
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
+
+	// WebSocket endpoint (authentication via query param)
+	router.GET("/ws", wsHandler.HandleWebSocket)
 
 	// API v1 routes
 	v1 := router.Group("/api/v1")

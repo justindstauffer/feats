@@ -7,15 +7,18 @@ import (
 	"github.com/jstauff/feats-api/internal/middleware"
 	"github.com/jstauff/feats-api/internal/models"
 	"github.com/jstauff/feats-api/internal/services"
+	"github.com/jstauff/feats-api/internal/websocket"
 )
 
 type CommentHandler struct {
 	commentService *services.CommentService
+	wsHub          *websocket.Hub
 }
 
-func NewCommentHandler(commentService *services.CommentService) *CommentHandler {
+func NewCommentHandler(commentService *services.CommentService, wsHub *websocket.Hub) *CommentHandler {
 	return &CommentHandler{
 		commentService: commentService,
+		wsHub:          wsHub,
 	}
 }
 
@@ -79,6 +82,22 @@ func (h *CommentHandler) CreateComment(c *gin.Context) {
 		return
 	}
 
+	// Broadcast comment.created event via WebSocket
+	if h.wsHub != nil {
+		user, _ := middleware.GetCurrentUser(c)
+		payload := websocket.CommentCreatedPayload{
+			CommentID: comment.ID,
+			PostID:    postID,
+			UserID:    userID,
+			UserName:  user.Name,
+			Content:   comment.Content,
+			ParentID:  comment.ParentID,
+		}
+		if event, err := websocket.NewEvent(websocket.EventCommentCreated, groupID, userID, payload); err == nil {
+			h.wsHub.BroadcastToGroup(event)
+		}
+	}
+
 	c.JSON(http.StatusCreated, models.SuccessResponse(comment))
 }
 
@@ -134,6 +153,9 @@ func (h *CommentHandler) DeleteComment(c *gin.Context) {
 	userID, _ := middleware.GetCurrentUserID(c)
 	isAdmin := middleware.IsAdmin(c)
 
+	// Get the comment first to know the postID for the event
+	comment, _ := h.commentService.GetCommentByID(commentID)
+
 	err := h.commentService.DeleteComment(groupID, commentID, userID, isAdmin)
 	if err != nil {
 		switch err {
@@ -154,6 +176,17 @@ func (h *CommentHandler) DeleteComment(c *gin.Context) {
 			))
 		}
 		return
+	}
+
+	// Broadcast comment.deleted event via WebSocket
+	if h.wsHub != nil && comment != nil {
+		payload := websocket.CommentDeletedPayload{
+			CommentID: commentID,
+			PostID:    comment.PostID,
+		}
+		if event, err := websocket.NewEvent(websocket.EventCommentDeleted, groupID, userID, payload); err == nil {
+			h.wsHub.BroadcastToGroup(event)
+		}
 	}
 
 	c.JSON(http.StatusOK, models.SuccessResponse(gin.H{

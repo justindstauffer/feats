@@ -1,0 +1,443 @@
+import Foundation
+
+// MARK: - Event Types
+
+enum WebSocketEventType: String, Codable {
+    case postCreated = "post.created"
+    case postDeleted = "post.deleted"
+    case reactionAdded = "reaction.added"
+    case reactionRemoved = "reaction.removed"
+    case commentCreated = "comment.created"
+    case commentDeleted = "comment.deleted"
+    case challengeCreated = "challenge.created"
+    case challengeJoined = "challenge.joined"
+    case challengeLeft = "challenge.left"
+    case challengeProgress = "challenge.progress"
+    case memberJoined = "member.joined"
+    case memberLeft = "member.left"
+    case streakUpdated = "streak.updated"
+}
+
+struct WebSocketEvent: Codable {
+    let type: WebSocketEventType
+    let groupId: String
+    let userId: String?
+    let payload: Data
+    let timestamp: Date
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case groupId = "group_id"
+        case userId = "user_id"
+        case payload
+        case timestamp
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decode(WebSocketEventType.self, forKey: .type)
+        groupId = try container.decode(String.self, forKey: .groupId)
+        userId = try container.decodeIfPresent(String.self, forKey: .userId)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
+
+        // Decode payload as raw JSON data for later parsing
+        let payloadJSON = try container.decode(AnyCodable.self, forKey: .payload)
+        payload = try JSONEncoder().encode(payloadJSON)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(type, forKey: .type)
+        try container.encode(groupId, forKey: .groupId)
+        try container.encodeIfPresent(userId, forKey: .userId)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encode(payload, forKey: .payload)
+    }
+}
+
+// Helper for decoding arbitrary JSON
+struct AnyCodable: Codable {
+    let value: Any
+
+    init(_ value: Any) {
+        self.value = value
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let intVal = try? container.decode(Int.self) {
+            value = intVal
+        } else if let doubleVal = try? container.decode(Double.self) {
+            value = doubleVal
+        } else if let boolVal = try? container.decode(Bool.self) {
+            value = boolVal
+        } else if let stringVal = try? container.decode(String.self) {
+            value = stringVal
+        } else if let arrayVal = try? container.decode([AnyCodable].self) {
+            value = arrayVal.map { $0.value }
+        } else if let dictVal = try? container.decode([String: AnyCodable].self) {
+            value = dictVal.mapValues { $0.value }
+        } else {
+            value = NSNull()
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch value {
+        case let intVal as Int:
+            try container.encode(intVal)
+        case let doubleVal as Double:
+            try container.encode(doubleVal)
+        case let boolVal as Bool:
+            try container.encode(boolVal)
+        case let stringVal as String:
+            try container.encode(stringVal)
+        case let arrayVal as [Any]:
+            try container.encode(arrayVal.map { AnyCodable($0) })
+        case let dictVal as [String: Any]:
+            try container.encode(dictVal.mapValues { AnyCodable($0) })
+        default:
+            try container.encodeNil()
+        }
+    }
+}
+
+// MARK: - Payload Types
+
+struct PostCreatedPayload: Codable {
+    let postId: String
+    let userId: String
+    let userName: String
+    let activityTypeId: String
+    let activityName: String
+    let activityIcon: String?
+    let description: String?
+    let imageCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case postId = "post_id"
+        case userId = "user_id"
+        case userName = "user_name"
+        case activityTypeId = "activity_type_id"
+        case activityName = "activity_name"
+        case activityIcon = "activity_icon"
+        case description
+        case imageCount = "image_count"
+    }
+}
+
+struct PostDeletedPayload: Codable {
+    let postId: String
+
+    enum CodingKeys: String, CodingKey {
+        case postId = "post_id"
+    }
+}
+
+struct ReactionPayload: Codable {
+    let postId: String
+    let userId: String
+    let userName: String
+    let reactionType: String?
+
+    enum CodingKeys: String, CodingKey {
+        case postId = "post_id"
+        case userId = "user_id"
+        case userName = "user_name"
+        case reactionType = "reaction_type"
+    }
+}
+
+struct CommentCreatedPayload: Codable {
+    let commentId: String
+    let postId: String
+    let userId: String
+    let userName: String
+    let content: String
+    let parentId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case commentId = "comment_id"
+        case postId = "post_id"
+        case userId = "user_id"
+        case userName = "user_name"
+        case content
+        case parentId = "parent_id"
+    }
+}
+
+struct CommentDeletedPayload: Codable {
+    let commentId: String
+    let postId: String
+
+    enum CodingKeys: String, CodingKey {
+        case commentId = "comment_id"
+        case postId = "post_id"
+    }
+}
+
+struct ChallengeCreatedPayload: Codable {
+    let challengeId: String
+    let name: String
+    let creatorId: String
+    let creatorName: String
+    let activityName: String
+    let targetCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case challengeId = "challenge_id"
+        case name
+        case creatorId = "creator_id"
+        case creatorName = "creator_name"
+        case activityName = "activity_name"
+        case targetCount = "target_count"
+    }
+}
+
+struct ChallengeJoinedPayload: Codable {
+    let challengeId: String
+    let challengeName: String
+    let userId: String
+    let userName: String
+
+    enum CodingKeys: String, CodingKey {
+        case challengeId = "challenge_id"
+        case challengeName = "challenge_name"
+        case userId = "user_id"
+        case userName = "user_name"
+    }
+}
+
+struct ChallengeLeftPayload: Codable {
+    let challengeId: String
+    let challengeName: String
+    let userId: String
+
+    enum CodingKeys: String, CodingKey {
+        case challengeId = "challenge_id"
+        case challengeName = "challenge_name"
+        case userId = "user_id"
+    }
+}
+
+struct MemberJoinedPayload: Codable {
+    let userId: String
+    let userName: String
+
+    enum CodingKeys: String, CodingKey {
+        case userId = "user_id"
+        case userName = "user_name"
+    }
+}
+
+struct MemberLeftPayload: Codable {
+    let userId: String
+    let userName: String
+
+    enum CodingKeys: String, CodingKey {
+        case userId = "user_id"
+        case userName = "user_name"
+    }
+}
+
+// MARK: - WebSocket Service
+
+@MainActor
+@Observable
+final class WebSocketService {
+    static let shared = WebSocketService()
+
+    private var webSocketTask: URLSessionWebSocketTask?
+    private var isConnected = false
+    private var reconnectAttempts = 0
+    private let maxReconnectAttempts = 5
+    private var reconnectTask: Task<Void, Never>?
+
+    // Event handlers - set these to respond to events
+    var onPostCreated: ((PostCreatedPayload, String) -> Void)?
+    var onPostDeleted: ((PostDeletedPayload, String) -> Void)?
+    var onReactionAdded: ((ReactionPayload, String) -> Void)?
+    var onReactionRemoved: ((ReactionPayload, String) -> Void)?
+    var onCommentCreated: ((CommentCreatedPayload, String) -> Void)?
+    var onCommentDeleted: ((CommentDeletedPayload, String) -> Void)?
+    var onChallengeCreated: ((ChallengeCreatedPayload, String) -> Void)?
+    var onChallengeJoined: ((ChallengeJoinedPayload, String) -> Void)?
+    var onChallengeLeft: ((ChallengeLeftPayload, String) -> Void)?
+    var onMemberJoined: ((MemberJoinedPayload, String) -> Void)?
+    var onMemberLeft: ((MemberLeftPayload, String) -> Void)?
+
+    private init() {}
+
+    func connect() async {
+        guard !isConnected else { return }
+
+        // Get WebSocket URL with token
+        guard let url = APIClient.shared.webSocketURL() else {
+            print("WebSocket: No URL available (not authenticated?)")
+            return
+        }
+
+        let session = URLSession(configuration: .default)
+        webSocketTask = session.webSocketTask(with: url)
+        webSocketTask?.resume()
+
+        isConnected = true
+        reconnectAttempts = 0
+        print("WebSocket: Connected")
+
+        // Start receiving messages
+        receiveMessage()
+    }
+
+    func disconnect() {
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        webSocketTask?.cancel(with: .normalClosure, reason: nil)
+        webSocketTask = nil
+        isConnected = false
+        print("WebSocket: Disconnected")
+    }
+
+    func subscribeToGroup(_ groupId: String) {
+        guard isConnected else { return }
+
+        let message = ["action": "subscribe", "group_id": groupId]
+        sendJSON(message)
+    }
+
+    func unsubscribeFromGroup(_ groupId: String) {
+        guard isConnected else { return }
+
+        let message = ["action": "unsubscribe", "group_id": groupId]
+        sendJSON(message)
+    }
+
+    private func sendJSON(_ object: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: object),
+              let string = String(data: data, encoding: .utf8) else {
+            return
+        }
+
+        webSocketTask?.send(.string(string)) { error in
+            if let error = error {
+                print("WebSocket send error: \(error)")
+            }
+        }
+    }
+
+    private func receiveMessage() {
+        webSocketTask?.receive { [weak self] result in
+            Task { @MainActor in
+                switch result {
+                case .success(let message):
+                    self?.handleMessage(message)
+                    self?.receiveMessage() // Continue receiving
+                case .failure(let error):
+                    print("WebSocket receive error: \(error)")
+                    self?.handleDisconnect()
+                }
+            }
+        }
+    }
+
+    private func handleMessage(_ message: URLSessionWebSocketTask.Message) {
+        switch message {
+        case .string(let text):
+            parseEvent(text)
+        case .data(let data):
+            if let text = String(data: data, encoding: .utf8) {
+                parseEvent(text)
+            }
+        @unknown default:
+            break
+        }
+    }
+
+    private func parseEvent(_ text: String) {
+        guard let data = text.data(using: .utf8) else { return }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        do {
+            let event = try decoder.decode(WebSocketEvent.self, from: data)
+            handleEvent(event)
+        } catch {
+            print("WebSocket: Failed to parse event: \(error)")
+        }
+    }
+
+    private func handleEvent(_ event: WebSocketEvent) {
+        let decoder = JSONDecoder()
+
+        switch event.type {
+        case .postCreated:
+            if let payload = try? decoder.decode(PostCreatedPayload.self, from: event.payload) {
+                onPostCreated?(payload, event.groupId)
+            }
+        case .postDeleted:
+            if let payload = try? decoder.decode(PostDeletedPayload.self, from: event.payload) {
+                onPostDeleted?(payload, event.groupId)
+            }
+        case .reactionAdded:
+            if let payload = try? decoder.decode(ReactionPayload.self, from: event.payload) {
+                onReactionAdded?(payload, event.groupId)
+            }
+        case .reactionRemoved:
+            if let payload = try? decoder.decode(ReactionPayload.self, from: event.payload) {
+                onReactionRemoved?(payload, event.groupId)
+            }
+        case .commentCreated:
+            if let payload = try? decoder.decode(CommentCreatedPayload.self, from: event.payload) {
+                onCommentCreated?(payload, event.groupId)
+            }
+        case .commentDeleted:
+            if let payload = try? decoder.decode(CommentDeletedPayload.self, from: event.payload) {
+                onCommentDeleted?(payload, event.groupId)
+            }
+        case .challengeCreated:
+            if let payload = try? decoder.decode(ChallengeCreatedPayload.self, from: event.payload) {
+                onChallengeCreated?(payload, event.groupId)
+            }
+        case .challengeJoined:
+            if let payload = try? decoder.decode(ChallengeJoinedPayload.self, from: event.payload) {
+                onChallengeJoined?(payload, event.groupId)
+            }
+        case .challengeLeft:
+            if let payload = try? decoder.decode(ChallengeLeftPayload.self, from: event.payload) {
+                onChallengeLeft?(payload, event.groupId)
+            }
+        case .memberJoined:
+            if let payload = try? decoder.decode(MemberJoinedPayload.self, from: event.payload) {
+                onMemberJoined?(payload, event.groupId)
+            }
+        case .memberLeft:
+            if let payload = try? decoder.decode(MemberLeftPayload.self, from: event.payload) {
+                onMemberLeft?(payload, event.groupId)
+            }
+        case .challengeProgress, .streakUpdated:
+            // Handle these if needed
+            break
+        }
+    }
+
+    private func handleDisconnect() {
+        isConnected = false
+
+        guard reconnectAttempts < maxReconnectAttempts else {
+            print("WebSocket: Max reconnect attempts reached")
+            return
+        }
+
+        reconnectAttempts += 1
+        let delay = Double(min(pow(2, Double(reconnectAttempts)), 30)) // Exponential backoff, max 30s
+
+        reconnectTask = Task {
+            try? await Task.sleep(for: .seconds(delay))
+            if !Task.isCancelled {
+                await connect()
+            }
+        }
+    }
+}

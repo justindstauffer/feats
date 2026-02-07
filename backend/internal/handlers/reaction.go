@@ -7,15 +7,18 @@ import (
 	"github.com/jstauff/feats-api/internal/middleware"
 	"github.com/jstauff/feats-api/internal/models"
 	"github.com/jstauff/feats-api/internal/services"
+	"github.com/jstauff/feats-api/internal/websocket"
 )
 
 type ReactionHandler struct {
 	reactionService *services.ReactionService
+	wsHub           *websocket.Hub
 }
 
-func NewReactionHandler(reactionService *services.ReactionService) *ReactionHandler {
+func NewReactionHandler(reactionService *services.ReactionService, wsHub *websocket.Hub) *ReactionHandler {
 	return &ReactionHandler{
 		reactionService: reactionService,
+		wsHub:           wsHub,
 	}
 }
 
@@ -88,6 +91,20 @@ func (h *ReactionHandler) AddReaction(c *gin.Context) {
 		status = http.StatusCreated
 	}
 
+	// Broadcast reaction.added event via WebSocket
+	if h.wsHub != nil {
+		user, _ := middleware.GetCurrentUser(c)
+		payload := websocket.ReactionPayload{
+			PostID:       postID,
+			UserID:       userID,
+			UserName:     user.Name,
+			ReactionType: string(reaction.ReactionType),
+		}
+		if event, err := websocket.NewEvent(websocket.EventReactionAdded, groupID, userID, payload); err == nil {
+			h.wsHub.BroadcastToGroup(event)
+		}
+	}
+
 	c.JSON(status, models.SuccessResponse(reaction))
 }
 
@@ -117,6 +134,19 @@ func (h *ReactionHandler) RemoveReaction(c *gin.Context) {
 			"An error occurred",
 		))
 		return
+	}
+
+	// Broadcast reaction.removed event via WebSocket
+	if h.wsHub != nil {
+		user, _ := middleware.GetCurrentUser(c)
+		payload := websocket.ReactionPayload{
+			PostID:   postID,
+			UserID:   userID,
+			UserName: user.Name,
+		}
+		if event, err := websocket.NewEvent(websocket.EventReactionRemoved, groupID, userID, payload); err == nil {
+			h.wsHub.BroadcastToGroup(event)
+		}
 	}
 
 	c.JSON(http.StatusOK, models.SuccessResponse(gin.H{

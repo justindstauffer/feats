@@ -312,9 +312,20 @@ Moved `.refreshable` modifier directly onto the `List` in `ChallengesView` inste
 - [x] Keyboard dismissal on CreatePostView (Done button + scroll dismiss)
 - [x] App icon added (trophy emoji)
 
+### Real-Time Updates (WebSockets)
+- [x] Backend WebSocket hub infrastructure (`internal/websocket/hub.go`)
+- [x] Backend WebSocket client handling (`internal/websocket/client.go`)
+- [x] Backend event types and broadcasting (`internal/websocket/events.go`)
+- [x] Backend WebSocket upgrade handler (`internal/handlers/websocket.go`)
+- [x] Backend handlers broadcast events (post, reaction, comment, challenge, group)
+- [x] iOS WebSocketService (`Services/WebSocketService.swift`)
+- [x] iOS event type definitions and payload models
+- [x] iOS AuthService connects/disconnects WebSocket on auth changes
+- [x] iOS AppState handles WebSocket events for auto-refresh
+
 ---
 
-## Next Major Feature: Real-Time Updates (WebSockets)
+## Completed: Real-Time Updates (WebSockets)
 
 ### Overview
 Implement WebSocket connections for instant updates across the app. When someone posts, joins a group, or completes a challenge, all connected clients see the update immediately.

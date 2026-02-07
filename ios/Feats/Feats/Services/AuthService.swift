@@ -31,6 +31,9 @@ final class AuthService {
 
             // Load user's groups
             await GroupService.shared.loadGroups()
+
+            // Connect WebSocket
+            await WebSocketService.shared.connect()
         } catch {
             // Token invalid, clear everything
             logout()
@@ -62,6 +65,9 @@ final class AuthService {
 
         // Load user's groups
         await GroupService.shared.loadGroups()
+
+        // Connect WebSocket
+        await WebSocketService.shared.connect()
     }
 
     // MARK: - Login
@@ -89,6 +95,9 @@ final class AuthService {
 
         // Load user's groups
         await GroupService.shared.loadGroups()
+
+        // Connect WebSocket
+        await WebSocketService.shared.connect()
     }
 
     // MARK: - Logout
@@ -98,6 +107,9 @@ final class AuthService {
             // Try to logout on server (ignore errors)
             try? await apiClient.requestMessage(endpoint: "/auth/logout", method: .post)
         }
+
+        // Disconnect WebSocket
+        WebSocketService.shared.disconnect()
 
         apiClient.clearTokens()
         currentUser = nil

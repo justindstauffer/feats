@@ -7,17 +7,20 @@ import (
 	"github.com/jstauff/feats-api/internal/middleware"
 	"github.com/jstauff/feats-api/internal/models"
 	"github.com/jstauff/feats-api/internal/services"
+	"github.com/jstauff/feats-api/internal/websocket"
 )
 
 type GroupHandler struct {
 	groupService *services.GroupService
 	auditService *services.AuditService
+	wsHub        *websocket.Hub
 }
 
-func NewGroupHandler(groupService *services.GroupService, auditService *services.AuditService) *GroupHandler {
+func NewGroupHandler(groupService *services.GroupService, auditService *services.AuditService, wsHub *websocket.Hub) *GroupHandler {
 	return &GroupHandler{
 		groupService: groupService,
 		auditService: auditService,
+		wsHub:        wsHub,
 	}
 }
 
@@ -138,6 +141,7 @@ func (h *GroupHandler) DeleteGroup(c *gin.Context) {
 func (h *GroupHandler) LeaveGroup(c *gin.Context) {
 	groupID, _ := middleware.GetCurrentGroupID(c)
 	userID, _ := middleware.GetCurrentUserID(c)
+	user, _ := middleware.GetCurrentUser(c)
 
 	if err := h.groupService.LeaveGroup(groupID, userID); err != nil {
 		switch err {
@@ -158,6 +162,17 @@ func (h *GroupHandler) LeaveGroup(c *gin.Context) {
 			))
 		}
 		return
+	}
+
+	// Broadcast member.left event via WebSocket
+	if h.wsHub != nil {
+		payload := websocket.MemberLeftPayload{
+			UserID:   userID,
+			UserName: user.Name,
+		}
+		if event, err := websocket.NewEvent(websocket.EventMemberLeft, groupID, userID, payload); err == nil {
+			h.wsHub.BroadcastToGroup(event)
+		}
 	}
 
 	c.JSON(http.StatusOK, models.SuccessResponse(gin.H{
@@ -376,6 +391,18 @@ func (h *GroupHandler) RedeemInvite(c *gin.Context) {
 			))
 		}
 		return
+	}
+
+	// Broadcast member.joined event via WebSocket
+	if h.wsHub != nil {
+		user, _ := middleware.GetCurrentUser(c)
+		payload := websocket.MemberJoinedPayload{
+			UserID:   userID,
+			UserName: user.Name,
+		}
+		if event, err := websocket.NewEvent(websocket.EventMemberJoined, group.ID, userID, payload); err == nil {
+			h.wsHub.BroadcastToGroup(event)
+		}
 	}
 
 	c.JSON(http.StatusOK, models.SuccessResponse(group))

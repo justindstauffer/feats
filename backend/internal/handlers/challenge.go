@@ -7,15 +7,18 @@ import (
 	"github.com/jstauff/feats-api/internal/middleware"
 	"github.com/jstauff/feats-api/internal/models"
 	"github.com/jstauff/feats-api/internal/services"
+	"github.com/jstauff/feats-api/internal/websocket"
 )
 
 type ChallengeHandler struct {
 	challengeService *services.ChallengeService
+	wsHub            *websocket.Hub
 }
 
-func NewChallengeHandler(challengeService *services.ChallengeService) *ChallengeHandler {
+func NewChallengeHandler(challengeService *services.ChallengeService, wsHub *websocket.Hub) *ChallengeHandler {
 	return &ChallengeHandler{
 		challengeService: challengeService,
+		wsHub:            wsHub,
 	}
 }
 
@@ -81,6 +84,26 @@ func (h *ChallengeHandler) CreateChallenge(c *gin.Context) {
 		return
 	}
 
+	// Broadcast challenge.created event via WebSocket
+	if h.wsHub != nil {
+		user, _ := middleware.GetCurrentUser(c)
+		activityName := ""
+		if challenge.ActivityType != nil {
+			activityName = challenge.ActivityType.Name
+		}
+		payload := websocket.ChallengeCreatedPayload{
+			ChallengeID:  challenge.ID,
+			Name:         challenge.Title,
+			CreatorID:    userID,
+			CreatorName:  user.Name,
+			ActivityName: activityName,
+			TargetCount:  challenge.TargetCount,
+		}
+		if event, err := websocket.NewEvent(websocket.EventChallengeCreated, groupID, userID, payload); err == nil {
+			h.wsHub.BroadcastToGroup(event)
+		}
+	}
+
 	c.JSON(http.StatusCreated, models.SuccessResponse(challenge))
 }
 
@@ -116,6 +139,25 @@ func (h *ChallengeHandler) JoinChallenge(c *gin.Context) {
 		return
 	}
 
+	// Broadcast challenge.joined event via WebSocket
+	if h.wsHub != nil {
+		user, _ := middleware.GetCurrentUser(c)
+		challenge, _ := h.challengeService.GetChallengeByID(groupID, challengeID)
+		challengeName := ""
+		if challenge != nil {
+			challengeName = challenge.Title
+		}
+		payload := websocket.ChallengeJoinedPayload{
+			ChallengeID:   challengeID,
+			ChallengeName: challengeName,
+			UserID:        userID,
+			UserName:      user.Name,
+		}
+		if event, err := websocket.NewEvent(websocket.EventChallengeJoined, groupID, userID, payload); err == nil {
+			h.wsHub.BroadcastToGroup(event)
+		}
+	}
+
 	c.JSON(http.StatusOK, models.SuccessResponse(gin.H{
 		"message": "Joined challenge",
 	}))
@@ -125,6 +167,9 @@ func (h *ChallengeHandler) LeaveChallenge(c *gin.Context) {
 	groupID, _ := middleware.GetCurrentGroupID(c)
 	challengeID := c.Param("id")
 	userID, _ := middleware.GetCurrentUserID(c)
+
+	// Get challenge info before leaving for the event
+	challenge, _ := h.challengeService.GetChallengeByID(groupID, challengeID)
 
 	err := h.challengeService.LeaveChallenge(groupID, challengeID, userID)
 	if err != nil {
@@ -140,6 +185,18 @@ func (h *ChallengeHandler) LeaveChallenge(c *gin.Context) {
 			"An error occurred",
 		))
 		return
+	}
+
+	// Broadcast challenge.left event via WebSocket
+	if h.wsHub != nil && challenge != nil {
+		payload := websocket.ChallengeLeftPayload{
+			ChallengeID:   challengeID,
+			ChallengeName: challenge.Title,
+			UserID:        userID,
+		}
+		if event, err := websocket.NewEvent(websocket.EventChallengeLeft, groupID, userID, payload); err == nil {
+			h.wsHub.BroadcastToGroup(event)
+		}
 	}
 
 	c.JSON(http.StatusOK, models.SuccessResponse(gin.H{

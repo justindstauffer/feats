@@ -378,6 +378,20 @@ final class APIClient {
         URL(string: "\(imageBaseURL)/images/\(imageId)")
     }
 
+    // MARK: - WebSocket URL
+
+    func webSocketURL() -> URL? {
+        let wsBaseURL = imageBaseURL.replacingOccurrences(of: "https://", with: "wss://")
+            .replacingOccurrences(of: "http://", with: "ws://")
+        guard let token = accessToken else { return nil }
+        return URL(string: "\(wsBaseURL)/ws?token=\(token)")
+    }
+
+    func getAccessToken() async throws -> String? {
+        try await refreshTokenIfNeeded()
+        return accessToken
+    }
+
     // MARK: - Image Fetch (authenticated)
 
     func fetchImageData(from url: URL) async throws -> Data {
