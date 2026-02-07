@@ -99,6 +99,7 @@ struct CreatePostView: View {
     @Environment(AppState.self) private var appState
     @Environment(GroupService.self) private var groupService
     @State private var viewModel = CreatePostViewModel()
+    @FocusState private var isDescriptionFocused: Bool
 
     private var currentGroupId: String? {
         groupService.currentGroup?.id
@@ -160,6 +161,7 @@ struct CreatePostView: View {
                 Section("Description (optional)") {
                     TextField("What did you do?", text: $viewModel.description, axis: .vertical)
                         .lineLimit(3...6)
+                        .focused($isDescriptionFocused)
                 }
 
                 // Error message
@@ -184,7 +186,14 @@ struct CreatePostView: View {
                     }
                     .disabled(viewModel.selectedActivity == nil || viewModel.isPosting)
                 }
+
+                ToolbarItem(placement: .keyboard) {
+                    Button("Done") {
+                        isDescriptionFocused = false
+                    }
+                }
             }
+            .scrollDismissesKeyboard(.interactively)
             .overlay {
                 if viewModel.isPosting {
                     Color.black.opacity(0.3)

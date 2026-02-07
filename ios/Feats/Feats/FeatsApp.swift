@@ -10,6 +10,7 @@ struct FeatsApp: App {
             ContentView()
                 .environment(authService)
                 .environment(groupService)
+                .preferredColorScheme(.light) // Force light mode for beta
         }
     }
 }
