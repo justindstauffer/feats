@@ -241,6 +241,16 @@ struct MemberLeftPayload: Codable {
     }
 }
 
+// MARK: - Connection State
+
+enum WebSocketConnectionState: Equatable {
+    case disconnected
+    case connecting
+    case connected
+    case reconnecting(attempt: Int, maxAttempts: Int)
+    case failed
+}
+
 // MARK: - WebSocket Service
 
 @MainActor
@@ -249,10 +259,18 @@ final class WebSocketService {
     static let shared = WebSocketService()
 
     private var webSocketTask: URLSessionWebSocketTask?
-    private var isConnected = false
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 5
     private var reconnectTask: Task<Void, Never>?
+    private var currentGroupId: String?
+    private var shouldReconnectOnForeground = false
+
+    // Observable connection state for UI
+    private(set) var connectionState: WebSocketConnectionState = .disconnected
+
+    var isConnected: Bool {
+        connectionState == .connected
+    }
 
     // Event handlers - set these to respond to events
     var onPostCreated: ((PostCreatedPayload, String) -> Void)?
@@ -270,11 +288,14 @@ final class WebSocketService {
     private init() {}
 
     func connect() async {
-        guard !isConnected else { return }
+        guard connectionState == .disconnected || connectionState == .failed else { return }
+
+        connectionState = .connecting
 
         // Get WebSocket URL with token
         guard let url = APIClient.shared.webSocketURL() else {
             print("WebSocket: No URL available (not authenticated?)")
+            connectionState = .disconnected
             return
         }
 
@@ -282,9 +303,14 @@ final class WebSocketService {
         webSocketTask = session.webSocketTask(with: url)
         webSocketTask?.resume()
 
-        isConnected = true
+        connectionState = .connected
         reconnectAttempts = 0
         print("WebSocket: Connected")
+
+        // Re-subscribe to current group if we have one
+        if let groupId = currentGroupId {
+            subscribeToGroup(groupId)
+        }
 
         // Start receiving messages
         receiveMessage()
@@ -295,20 +321,57 @@ final class WebSocketService {
         reconnectTask = nil
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
         webSocketTask = nil
-        isConnected = false
+        connectionState = .disconnected
+        shouldReconnectOnForeground = false
         print("WebSocket: Disconnected")
     }
 
-    func subscribeToGroup(_ groupId: String) {
+    /// Called when app goes to background - pauses connection
+    func pause() {
         guard isConnected else { return }
+        shouldReconnectOnForeground = true
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        webSocketTask?.cancel(with: .goingAway, reason: nil)
+        webSocketTask = nil
+        connectionState = .disconnected
+        print("WebSocket: Paused (app backgrounded)")
+    }
 
+    /// Called when app comes to foreground - resumes connection
+    func resume() async {
+        guard shouldReconnectOnForeground else { return }
+        shouldReconnectOnForeground = false
+        reconnectAttempts = 0 // Reset attempts on manual resume
+        print("WebSocket: Resuming (app foregrounded)")
+        await connect()
+    }
+
+    /// Switch to a new group - unsubscribes from old, subscribes to new
+    func switchToGroup(_ groupId: String?) {
+        // Unsubscribe from old group
+        if let oldGroupId = currentGroupId, isConnected {
+            unsubscribeFromGroup(oldGroupId)
+            print("WebSocket: Unsubscribed from group \(oldGroupId)")
+        }
+
+        currentGroupId = groupId
+
+        // Subscribe to new group
+        if let newGroupId = groupId, isConnected {
+            subscribeToGroup(newGroupId)
+            print("WebSocket: Subscribed to group \(newGroupId)")
+        }
+    }
+
+    private func subscribeToGroup(_ groupId: String) {
+        guard isConnected else { return }
         let message = ["action": "subscribe", "group_id": groupId]
         sendJSON(message)
     }
 
-    func unsubscribeFromGroup(_ groupId: String) {
+    private func unsubscribeFromGroup(_ groupId: String) {
         guard isConnected else { return }
-
         let message = ["action": "unsubscribe", "group_id": groupId]
         sendJSON(message)
     }
@@ -425,21 +488,33 @@ final class WebSocketService {
     }
 
     private func handleDisconnect() {
-        isConnected = false
+        guard connectionState != .disconnected else { return }
 
         guard reconnectAttempts < maxReconnectAttempts else {
             print("WebSocket: Max reconnect attempts reached")
+            connectionState = .failed
             return
         }
 
         reconnectAttempts += 1
+        connectionState = .reconnecting(attempt: reconnectAttempts, maxAttempts: maxReconnectAttempts)
         let delay = Double(min(pow(2, Double(reconnectAttempts)), 30)) // Exponential backoff, max 30s
+        print("WebSocket: Reconnecting in \(delay)s (attempt \(reconnectAttempts)/\(maxReconnectAttempts))")
 
         reconnectTask = Task {
             try? await Task.sleep(for: .seconds(delay))
             if !Task.isCancelled {
+                connectionState = .connecting
                 await connect()
             }
         }
+    }
+
+    /// Manually retry connection after failure
+    func retryConnection() async {
+        guard connectionState == .failed else { return }
+        reconnectAttempts = 0
+        connectionState = .disconnected
+        await connect()
     }
 }

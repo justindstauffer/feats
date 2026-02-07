@@ -4,6 +4,7 @@ import SwiftUI
 struct FeatsApp: App {
     @State private var authService = AuthService.shared
     @State private var groupService = GroupService.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -11,6 +12,27 @@ struct FeatsApp: App {
                 .environment(authService)
                 .environment(groupService)
                 .preferredColorScheme(.light) // Force light mode for beta
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            handleScenePhaseChange(newPhase)
+        }
+    }
+
+    private func handleScenePhaseChange(_ phase: ScenePhase) {
+        switch phase {
+        case .active:
+            // App came to foreground - resume WebSocket
+            Task {
+                await WebSocketService.shared.resume()
+            }
+        case .background:
+            // App went to background - pause WebSocket to save battery
+            WebSocketService.shared.pause()
+        case .inactive:
+            // Transitioning - do nothing
+            break
+        @unknown default:
+            break
         }
     }
 }
