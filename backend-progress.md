@@ -4,6 +4,11 @@
 
 This document tracks the development progress of the Feats API backend. Use this as a reference for future coding-agent sessions.
 
+Note: canonical day-to-day agent context now lives in:
+- `AGENTS.md`
+- `docs/status/now.md`
+- `context/project-map.yaml`
+
 ## Tech Stack
 
 - **Language:** Go 1.21+
