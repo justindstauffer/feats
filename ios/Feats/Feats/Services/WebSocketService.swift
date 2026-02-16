@@ -432,54 +432,57 @@ final class WebSocketService {
         }
     }
 
-    private func handleEvent(_ event: WebSocketEvent) {
+    private func decodePayload<T: Decodable>(_ type: T.Type, from event: WebSocketEvent) -> T? {
         let decoder = JSONDecoder()
+        return try? decoder.decode(type, from: event.payload)
+    }
 
+    private func handleEvent(_ event: WebSocketEvent) {
         print("WebSocket: Received event - \(event.type.rawValue) in group \(event.groupId)")
 
         switch event.type {
         case .postCreated:
-            if let payload = try? decoder.decode(PostCreatedPayload.self, from: event.payload) {
+            if let payload = decodePayload(PostCreatedPayload.self, from: event) {
                 onPostCreated?(payload, event.groupId)
             }
         case .postDeleted:
-            if let payload = try? decoder.decode(PostDeletedPayload.self, from: event.payload) {
+            if let payload = decodePayload(PostDeletedPayload.self, from: event) {
                 onPostDeleted?(payload, event.groupId)
             }
         case .reactionAdded:
-            if let payload = try? decoder.decode(ReactionPayload.self, from: event.payload) {
+            if let payload = decodePayload(ReactionPayload.self, from: event) {
                 onReactionAdded?(payload, event.groupId)
             }
         case .reactionRemoved:
-            if let payload = try? decoder.decode(ReactionPayload.self, from: event.payload) {
+            if let payload = decodePayload(ReactionPayload.self, from: event) {
                 onReactionRemoved?(payload, event.groupId)
             }
         case .commentCreated:
-            if let payload = try? decoder.decode(CommentCreatedPayload.self, from: event.payload) {
+            if let payload = decodePayload(CommentCreatedPayload.self, from: event) {
                 onCommentCreated?(payload, event.groupId)
             }
         case .commentDeleted:
-            if let payload = try? decoder.decode(CommentDeletedPayload.self, from: event.payload) {
+            if let payload = decodePayload(CommentDeletedPayload.self, from: event) {
                 onCommentDeleted?(payload, event.groupId)
             }
         case .challengeCreated:
-            if let payload = try? decoder.decode(ChallengeCreatedPayload.self, from: event.payload) {
+            if let payload = decodePayload(ChallengeCreatedPayload.self, from: event) {
                 onChallengeCreated?(payload, event.groupId)
             }
         case .challengeJoined:
-            if let payload = try? decoder.decode(ChallengeJoinedPayload.self, from: event.payload) {
+            if let payload = decodePayload(ChallengeJoinedPayload.self, from: event) {
                 onChallengeJoined?(payload, event.groupId)
             }
         case .challengeLeft:
-            if let payload = try? decoder.decode(ChallengeLeftPayload.self, from: event.payload) {
+            if let payload = decodePayload(ChallengeLeftPayload.self, from: event) {
                 onChallengeLeft?(payload, event.groupId)
             }
         case .memberJoined:
-            if let payload = try? decoder.decode(MemberJoinedPayload.self, from: event.payload) {
+            if let payload = decodePayload(MemberJoinedPayload.self, from: event) {
                 onMemberJoined?(payload, event.groupId)
             }
         case .memberLeft:
-            if let payload = try? decoder.decode(MemberLeftPayload.self, from: event.payload) {
+            if let payload = decodePayload(MemberLeftPayload.self, from: event) {
                 onMemberLeft?(payload, event.groupId)
             }
         case .challengeProgress, .streakUpdated:

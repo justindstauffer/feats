@@ -102,6 +102,30 @@ final class APIClient {
 
     private init() {}
 
+    private func unwrapResponseData<T>(_ response: APIResponse<T>) throws -> T {
+        if let error = response.error {
+            throw APIClientError.serverError(error)
+        }
+
+        guard let data = response.data else {
+            throw APIClientError.noData
+        }
+
+        return data
+    }
+
+    private func unwrapPaginatedData<T>(_ response: PaginatedResponse<T>) throws -> T {
+        if let error = response.error {
+            throw APIClientError.serverError(error)
+        }
+
+        guard let data = response.data else {
+            throw APIClientError.noData
+        }
+
+        return data
+    }
+
     // MARK: - Token Management
 
     func setAccessToken(_ token: String, expiresAt: Date) {
@@ -162,15 +186,7 @@ final class APIClient {
             authenticated: authenticated
         )
 
-        if let error = response.error {
-            throw APIClientError.serverError(error)
-        }
-
-        guard let data = response.data else {
-            throw APIClientError.noData
-        }
-
-        return data
+        return try unwrapResponseData(response)
     }
 
     func request<T: Codable, B: Encodable>(
@@ -190,15 +206,7 @@ final class APIClient {
             authenticated: authenticated
         )
 
-        if let error = response.error {
-            throw APIClientError.serverError(error)
-        }
-
-        guard let data = response.data else {
-            throw APIClientError.noData
-        }
-
-        return data
+        return try unwrapResponseData(response)
     }
 
     func requestPaginated<T: Codable>(
@@ -218,14 +226,7 @@ final class APIClient {
             authenticated: true
         )
 
-        if let error = response.error {
-            throw APIClientError.serverError(error)
-        }
-
-        guard let data = response.data else {
-            throw APIClientError.noData
-        }
-
+        let data = try unwrapPaginatedData(response)
         return (data, response.pagination)
     }
 
