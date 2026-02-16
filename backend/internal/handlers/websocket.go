@@ -27,6 +27,12 @@ type WebSocketHandler struct {
 }
 
 func NewWebSocketHandler(hub *ws.Hub, authService *services.AuthService, groupService *services.GroupService) *WebSocketHandler {
+	if hub != nil {
+		hub.SetSubscriptionAuthorizer(func(userID, groupID string) bool {
+			return groupService.IsGroupMember(groupID, userID)
+		})
+	}
+
 	return &WebSocketHandler{
 		hub:          hub,
 		authService:  authService,
