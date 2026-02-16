@@ -146,7 +146,9 @@ func (c *Client) handleMessage(message []byte) {
 	case "subscribe":
 		// Subscribe to a group
 		if msg.GroupID != "" {
-			c.hub.subscribeToGroup(c, msg.GroupID)
+			if !c.hub.subscribeToGroup(c, msg.GroupID) {
+				log.Printf("Unauthorized WebSocket subscribe attempt: user=%s, group=%s", c.userID, msg.GroupID)
+			}
 		}
 	case "unsubscribe":
 		// Unsubscribe from a group

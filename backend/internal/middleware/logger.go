@@ -2,6 +2,8 @@ package middleware
 
 import (
 	"log"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -11,7 +13,7 @@ func Logger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
-		query := c.Request.URL.RawQuery
+		query := redactSensitiveQuery(c.Request.URL.Query())
 
 		c.Next()
 
@@ -40,4 +42,22 @@ func Logger() gin.HandlerFunc {
 			}
 		}
 	}
+}
+
+func redactSensitiveQuery(values url.Values) string {
+	if len(values) == 0 {
+		return ""
+	}
+
+	redacted := make(url.Values, len(values))
+	for key, val := range values {
+		lowerKey := strings.ToLower(key)
+		if lowerKey == "token" || lowerKey == "access_token" || lowerKey == "refresh_token" || lowerKey == "authorization" {
+			redacted[key] = []string{"[REDACTED]"}
+			continue
+		}
+		redacted[key] = val
+	}
+
+	return redacted.Encode()
 }

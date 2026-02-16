@@ -25,6 +25,10 @@ type Hub struct {
 
 	// Mutex for thread-safe access
 	mu sync.RWMutex
+
+	// Optional authorization callback for dynamic group subscriptions.
+	// Returns true when userID is allowed to subscribe to groupID.
+	subscriptionAuthorizer func(userID, groupID string) bool
 }
 
 // NewHub creates a new WebSocket hub
@@ -36,6 +40,13 @@ func NewHub() *Hub {
 		unregister:         make(chan *Client),
 		broadcast:          make(chan *Event, 256),
 	}
+}
+
+// SetSubscriptionAuthorizer configures server-side authorization for subscribe actions.
+func (h *Hub) SetSubscriptionAuthorizer(authorizer func(userID, groupID string) bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.subscriptionAuthorizer = authorizer
 }
 
 // Run starts the hub's main loop
@@ -132,7 +143,16 @@ func (h *Hub) broadcastEvent(event *Event) {
 }
 
 // subscribeToGroup adds a client to a group subscription
-func (h *Hub) subscribeToGroup(client *Client, groupID string) {
+func (h *Hub) subscribeToGroup(client *Client, groupID string) bool {
+	h.mu.RLock()
+	authorizer := h.subscriptionAuthorizer
+	h.mu.RUnlock()
+
+	if authorizer != nil && !authorizer(client.userID, groupID) {
+		log.Printf("WebSocket subscription denied: user=%s, group=%s", client.userID, groupID)
+		return false
+	}
+
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -144,6 +164,7 @@ func (h *Hub) subscribeToGroup(client *Client, groupID string) {
 	h.groupSubscriptions[groupID][client] = true
 
 	log.Printf("Client subscribed to group: user=%s, group=%s", client.userID, groupID)
+	return true
 }
 
 // unsubscribeFromGroup removes a client from a group subscription
