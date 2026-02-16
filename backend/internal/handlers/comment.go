@@ -12,12 +12,14 @@ import (
 
 type CommentHandler struct {
 	commentService *services.CommentService
+	pushService    *services.PushService
 	wsHub          *websocket.Hub
 }
 
-func NewCommentHandler(commentService *services.CommentService, wsHub *websocket.Hub) *CommentHandler {
+func NewCommentHandler(commentService *services.CommentService, pushService *services.PushService, wsHub *websocket.Hub) *CommentHandler {
 	return &CommentHandler{
 		commentService: commentService,
+		pushService:    pushService,
 		wsHub:          wsHub,
 	}
 }
@@ -95,6 +97,15 @@ func (h *CommentHandler) CreateComment(c *gin.Context) {
 		}
 		if event, err := websocket.NewEvent(websocket.EventCommentCreated, groupID, userID, payload); err == nil {
 			h.wsHub.BroadcastToGroup(event)
+		}
+	}
+
+	// Send push notification to post owner (if not self)
+	if h.pushService != nil {
+		user, _ := middleware.GetCurrentUser(c)
+		postOwnerID, err := h.commentService.GetPostOwnerID(comment.ID)
+		if err == nil && postOwnerID != userID {
+			go h.pushService.NotifyNewComment(postOwnerID, user.Name, comment.Content, postID)
 		}
 	}
 

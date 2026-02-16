@@ -1,7 +1,60 @@
 import SwiftUI
+import UserNotifications
+
+// MARK: - App Delegate for Push Notifications
+
+class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
+        return true
+    }
+
+    func application(
+        _ application: UIApplication,
+        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+    ) {
+        Task { @MainActor in
+            PushNotificationService.shared.didRegisterForRemoteNotifications(deviceToken: deviceToken)
+        }
+    }
+
+    func application(
+        _ application: UIApplication,
+        didFailToRegisterForRemoteNotificationsWithError error: Error
+    ) {
+        Task { @MainActor in
+            PushNotificationService.shared.didFailToRegisterForRemoteNotifications(error: error)
+        }
+    }
+
+    // Handle notification when app is in foreground
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        return [.banner, .sound, .badge]
+    }
+
+    // Handle notification tap
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        let userInfo = response.notification.request.content.userInfo
+        await MainActor.run {
+            PushNotificationService.shared.handleNotification(userInfo: userInfo)
+        }
+    }
+}
+
+// MARK: - Main App
 
 @main
 struct FeatsApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var authService = AuthService.shared
     @State private var groupService = GroupService.shared
     @Environment(\.scenePhase) private var scenePhase
@@ -21,9 +74,12 @@ struct FeatsApp: App {
     private func handleScenePhaseChange(_ phase: ScenePhase) {
         switch phase {
         case .active:
-            // App came to foreground - resume WebSocket
+            // App came to foreground - resume WebSocket, refresh data, and clear badge
             Task {
                 await WebSocketService.shared.resume()
+                PushNotificationService.shared.clearBadge()
+                // Refresh all data in case we missed WebSocket events while backgrounded
+                AppState.shared.refreshAllData()
             }
         case .background:
             // App went to background - pause WebSocket to save battery

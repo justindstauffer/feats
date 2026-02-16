@@ -2,9 +2,7 @@ version: '3.8'
 
 services:
   api:
-    build:
-      context: ..
-      dockerfile: Dockerfile
+    image: feats-api:latest
     container_name: feats-api
     restart: unless-stopped
     env_file:
@@ -13,6 +11,8 @@ services:
       # Persist database and uploaded files
       - feats-data:/app/data
       - feats-storage:/app/storage
+      # APNs key for push notifications (read-only)
+      - /home/feats/secrets/apns.p8:/app/secrets/apns.p8:ro
     environment:
       - DATABASE_PATH=/app/data/feats.db
       - STORAGE_PATH=/app/storage
@@ -28,6 +28,6 @@ services:
 
 volumes:
   feats-data:
-    driver: local
+    external: true
   feats-storage:
-    driver: local
+    external: true

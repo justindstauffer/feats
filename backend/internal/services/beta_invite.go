@@ -13,11 +13,11 @@ import (
 )
 
 var (
-	ErrBetaInviteNotFound    = errors.New("beta invite not found")
-	ErrBetaInviteExpired     = errors.New("beta invite has expired")
-	ErrBetaInviteMaxUses     = errors.New("beta invite has reached maximum uses")
-	ErrBetaInviteInvalid     = errors.New("invalid beta invite code")
-	ErrBetaInviteCodeExists  = errors.New("invite code already exists")
+	ErrBetaInviteNotFound   = errors.New("beta invite not found")
+	ErrBetaInviteExpired    = errors.New("beta invite has expired")
+	ErrBetaInviteMaxUses    = errors.New("beta invite has reached maximum uses")
+	ErrBetaInviteInvalid    = errors.New("invalid beta invite code")
+	ErrBetaInviteCodeExists = errors.New("invite code already exists")
 )
 
 type BetaInviteService struct {
@@ -121,6 +121,15 @@ func (s *BetaInviteService) ValidateAndConsume(code string) (*models.BetaInvite,
 	}
 
 	return &invite, nil
+}
+
+// RollbackConsume decrements a previously consumed invite use count.
+// This is used when downstream registration steps fail after consume.
+func (s *BetaInviteService) RollbackConsume(inviteID string) error {
+	return s.db.Model(&models.BetaInvite{}).
+		Where("id = ? AND use_count > 0", inviteID).
+		Update("use_count", gorm.Expr("use_count - 1")).
+		Error
 }
 
 // GetByID retrieves a beta invite by ID

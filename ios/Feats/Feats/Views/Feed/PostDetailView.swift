@@ -340,7 +340,7 @@ struct CommentRow: View {
 
                 Spacer()
 
-                Text(comment.createdAt, style: .relative)
+                Text(comment.createdAt.relativeFormatted)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

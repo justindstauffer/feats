@@ -23,7 +23,7 @@ struct PostCard: View {
                         .font(.subheadline)
                         .fontWeight(.semibold)
 
-                    Text(post.createdAt, style: .relative)
+                    Text(post.createdAt.relativeFormatted)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

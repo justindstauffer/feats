@@ -34,6 +34,9 @@ final class AuthService {
 
             // Connect WebSocket
             await WebSocketService.shared.connect()
+
+            // Request push notification permission and register token
+            _ = await PushNotificationService.shared.requestPermission()
         } catch {
             // Token invalid, clear everything
             logout()
@@ -68,6 +71,9 @@ final class AuthService {
 
         // Connect WebSocket
         await WebSocketService.shared.connect()
+
+        // Request push notification permission and register token
+        _ = await PushNotificationService.shared.requestPermission()
     }
 
     // MARK: - Login
@@ -98,14 +104,20 @@ final class AuthService {
 
         // Connect WebSocket
         await WebSocketService.shared.connect()
+
+        // Request push notification permission and register token
+        _ = await PushNotificationService.shared.requestPermission()
     }
 
     // MARK: - Logout
 
     func logout() {
         Task {
+            // Unregister push token before logout
+            await PushNotificationService.shared.unregisterToken()
+
             // Try to logout on server (ignore errors)
-            try? await apiClient.requestMessage(endpoint: "/auth/logout", method: .post)
+            _ = try? await apiClient.requestMessage(endpoint: "/auth/logout", method: .post)
         }
 
         // Disconnect WebSocket

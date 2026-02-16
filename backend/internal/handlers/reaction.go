@@ -12,12 +12,14 @@ import (
 
 type ReactionHandler struct {
 	reactionService *services.ReactionService
+	pushService     *services.PushService
 	wsHub           *websocket.Hub
 }
 
-func NewReactionHandler(reactionService *services.ReactionService, wsHub *websocket.Hub) *ReactionHandler {
+func NewReactionHandler(reactionService *services.ReactionService, pushService *services.PushService, wsHub *websocket.Hub) *ReactionHandler {
 	return &ReactionHandler{
 		reactionService: reactionService,
+		pushService:     pushService,
 		wsHub:           wsHub,
 	}
 }

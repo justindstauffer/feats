@@ -22,6 +22,8 @@ type PostHandler struct {
 	challengeService *services.ChallengeService
 	goalService      *services.GoalService
 	auditService     *services.AuditService
+	groupService     *services.GroupService
+	pushService      *services.PushService
 	cfg              *config.Config
 	wsHub            *websocket.Hub
 }
@@ -32,6 +34,8 @@ func NewPostHandler(
 	challengeService *services.ChallengeService,
 	goalService *services.GoalService,
 	auditService *services.AuditService,
+	groupService *services.GroupService,
+	pushService *services.PushService,
 	cfg *config.Config,
 	wsHub *websocket.Hub,
 ) *PostHandler {
@@ -41,6 +45,8 @@ func NewPostHandler(
 		challengeService: challengeService,
 		goalService:      goalService,
 		auditService:     auditService,
+		groupService:     groupService,
+		pushService:      pushService,
 		cfg:              cfg,
 		wsHub:            wsHub,
 	}
@@ -141,6 +147,19 @@ func (h *PostHandler) CreatePost(c *gin.Context) {
 		}
 		if event, err := websocket.NewEvent(websocket.EventPostCreated, groupID, userID, payload); err == nil {
 			h.wsHub.BroadcastToGroup(event)
+		}
+	}
+
+	// Send push notification to other group members
+	if h.pushService != nil && h.groupService != nil {
+		user, _ := middleware.GetCurrentUser(c)
+		memberIDs, err := h.groupService.GetMemberUserIDs(groupID)
+		if err == nil && len(memberIDs) > 1 {
+			activityName := ""
+			if post.ActivityType.Name != "" {
+				activityName = post.ActivityType.Name
+			}
+			go h.pushService.NotifyNewPost(memberIDs, userID, user.Name, activityName, post.ID)
 		}
 	}
 
