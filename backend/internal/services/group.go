@@ -14,16 +14,16 @@ import (
 )
 
 var (
-	ErrGroupNotFound       = errors.New("group not found")
-	ErrAlreadyMember       = errors.New("already a member of this group")
-	ErrNotGroupMember      = errors.New("not a member of this group")
-	ErrNotGroupAdmin       = errors.New("not an admin of this group")
-	ErrCannotLeaveAsAdmin  = errors.New("cannot leave group as the only admin")
-	ErrCannotRemoveSelf    = errors.New("cannot remove yourself from the group")
-	ErrInviteNotFound      = errors.New("invite not found")
-	ErrInviteExpired       = errors.New("invite has expired")
-	ErrInviteMaxUsed       = errors.New("invite has reached maximum uses")
-	ErrInvalidInviteCode   = errors.New("invalid invite code")
+	ErrGroupNotFound      = errors.New("group not found")
+	ErrAlreadyMember      = errors.New("already a member of this group")
+	ErrNotGroupMember     = errors.New("not a member of this group")
+	ErrNotGroupAdmin      = errors.New("not an admin of this group")
+	ErrCannotLeaveAsAdmin = errors.New("cannot leave group as the only admin")
+	ErrCannotRemoveSelf   = errors.New("cannot remove yourself from the group")
+	ErrInviteNotFound     = errors.New("invite not found")
+	ErrInviteExpired      = errors.New("invite has expired")
+	ErrInviteMaxUsed      = errors.New("invite has reached maximum uses")
+	ErrInvalidInviteCode  = errors.New("invalid invite code")
 )
 
 type GroupService struct {
@@ -439,6 +439,22 @@ func (s *GroupService) RevokeInvite(inviteID, groupID string) error {
 		return ErrInviteNotFound
 	}
 	return result.Error
+}
+
+// GetMemberUserIDs returns all active member user IDs for a group
+func (s *GroupService) GetMemberUserIDs(groupID string) ([]string, error) {
+	var members []models.GroupMember
+	if err := s.db.
+		Where("group_id = ? AND left_at IS NULL", groupID).
+		Find(&members).Error; err != nil {
+		return nil, err
+	}
+
+	userIDs := make([]string, len(members))
+	for i, m := range members {
+		userIDs[i] = m.UserID
+	}
+	return userIDs, nil
 }
 
 // GenerateInviteCode creates a random invite code in XXXX-XXXX-XXXX format

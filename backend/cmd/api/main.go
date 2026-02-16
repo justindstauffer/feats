@@ -75,6 +75,7 @@ func main() {
 	challengeService := services.NewChallengeService(db)
 	goalService := services.NewGoalService(db, cfg)
 	auditService := services.NewAuditService(db)
+	pushService := services.NewPushService(db, cfg)
 
 	// Initialize WebSocket hub
 	wsHub := websocket.NewHub()
@@ -85,13 +86,14 @@ func main() {
 	userHandler := handlers.NewUserHandler(userService, auditService, authService)
 	groupHandler := handlers.NewGroupHandler(groupService, auditService, wsHub)
 	betaInviteHandler := handlers.NewBetaInviteHandler(betaInviteService)
-	postHandler := handlers.NewPostHandler(postService, streakService, challengeService, goalService, auditService, cfg, wsHub)
+	postHandler := handlers.NewPostHandler(postService, streakService, challengeService, goalService, auditService, groupService, pushService, cfg, wsHub)
 	activityHandler := handlers.NewActivityHandler(activityService)
-	reactionHandler := handlers.NewReactionHandler(reactionService, wsHub)
-	commentHandler := handlers.NewCommentHandler(commentService, wsHub)
+	reactionHandler := handlers.NewReactionHandler(reactionService, pushService, wsHub)
+	commentHandler := handlers.NewCommentHandler(commentService, pushService, wsHub)
 	streakHandler := handlers.NewStreakHandler(streakService)
-	challengeHandler := handlers.NewChallengeHandler(challengeService, wsHub)
+	challengeHandler := handlers.NewChallengeHandler(challengeService, pushService, wsHub)
 	goalHandler := handlers.NewGoalHandler(goalService)
+	pushHandler := handlers.NewPushHandler(pushService)
 	wsHandler := handlers.NewWebSocketHandler(wsHub, authService, groupService)
 
 	// Initialize middleware
@@ -146,8 +148,8 @@ func main() {
 		protected.GET("/users/:id", userHandler.GetUser)
 
 		// Device tokens (for push notifications)
-		protected.POST("/devices", authHandler.RegisterDevice)
-		protected.DELETE("/devices/:token", authHandler.UnregisterDevice)
+		protected.POST("/devices", pushHandler.RegisterToken)
+		protected.DELETE("/devices", pushHandler.UnregisterToken)
 
 		// Invite redemption (outside group context)
 		protected.POST("/invites/redeem", rateLimiter.InviteRedeemRateLimit(), groupHandler.RedeemInvite)

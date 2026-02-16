@@ -63,10 +63,12 @@ type Config struct {
 	AuditLogRetention    int
 	SoftDeleteRetention  int
 
-	// APNs
-	APNsKeyPath string
-	APNsKeyID   string
-	APNsTeamID  string
+	// APNs (Push Notifications)
+	APNsKeyPath    string
+	APNsKeyID      string
+	APNsTeamID     string
+	APNsBundleID   string
+	APNsProduction bool
 
 	// General
 	Timezone string
@@ -105,9 +107,11 @@ func Load() (*Config, error) {
 		SoftDeleteRetention: getIntEnv("SOFT_DELETE_RETENTION", 30),
 
 		// APNs
-		APNsKeyPath: getEnv("APNS_KEY_PATH", ""),
-		APNsKeyID:   getEnv("APNS_KEY_ID", ""),
-		APNsTeamID:  getEnv("APNS_TEAM_ID", ""),
+		APNsKeyPath:    getEnv("APNS_KEY_PATH", ""),
+		APNsKeyID:      getEnv("APNS_KEY_ID", ""),
+		APNsTeamID:     getEnv("APNS_TEAM_ID", ""),
+		APNsBundleID:   getEnv("APNS_BUNDLE_ID", ""),
+		APNsProduction: getEnv("APNS_PRODUCTION", "false") == "true",
 
 		// General
 		Timezone: getEnv("TIMEZONE", "UTC"),

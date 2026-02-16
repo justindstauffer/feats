@@ -12,12 +12,14 @@ import (
 
 type ChallengeHandler struct {
 	challengeService *services.ChallengeService
+	pushService      *services.PushService
 	wsHub            *websocket.Hub
 }
 
-func NewChallengeHandler(challengeService *services.ChallengeService, wsHub *websocket.Hub) *ChallengeHandler {
+func NewChallengeHandler(challengeService *services.ChallengeService, pushService *services.PushService, wsHub *websocket.Hub) *ChallengeHandler {
 	return &ChallengeHandler{
 		challengeService: challengeService,
+		pushService:      pushService,
 		wsHub:            wsHub,
 	}
 }
@@ -139,14 +141,18 @@ func (h *ChallengeHandler) JoinChallenge(c *gin.Context) {
 		return
 	}
 
+	// Get challenge info for notifications
+	user, _ := middleware.GetCurrentUser(c)
+	challenge, _ := h.challengeService.GetChallengeByID(groupID, challengeID)
+	challengeName := ""
+	var challengeCreatorID string
+	if challenge != nil {
+		challengeName = challenge.Title
+		challengeCreatorID = challenge.CreatedBy
+	}
+
 	// Broadcast challenge.joined event via WebSocket
 	if h.wsHub != nil {
-		user, _ := middleware.GetCurrentUser(c)
-		challenge, _ := h.challengeService.GetChallengeByID(groupID, challengeID)
-		challengeName := ""
-		if challenge != nil {
-			challengeName = challenge.Title
-		}
 		payload := websocket.ChallengeJoinedPayload{
 			ChallengeID:   challengeID,
 			ChallengeName: challengeName,
@@ -156,6 +162,11 @@ func (h *ChallengeHandler) JoinChallenge(c *gin.Context) {
 		if event, err := websocket.NewEvent(websocket.EventChallengeJoined, groupID, userID, payload); err == nil {
 			h.wsHub.BroadcastToGroup(event)
 		}
+	}
+
+	// Send push notification to challenge creator (if not self)
+	if h.pushService != nil && challengeCreatorID != "" && challengeCreatorID != userID {
+		go h.pushService.NotifyChallengeJoined(challengeCreatorID, user.Name, challengeName, challengeID)
 	}
 
 	c.JSON(http.StatusOK, models.SuccessResponse(gin.H{
