@@ -12,11 +12,15 @@ import (
 
 type ReactionHandler struct {
 	reactionService *services.ReactionService
-	pushService     *services.PushService
+	pushService     reactionPushNotifier
 	wsHub           *websocket.Hub
 }
 
-func NewReactionHandler(reactionService *services.ReactionService, pushService *services.PushService, wsHub *websocket.Hub) *ReactionHandler {
+type reactionPushNotifier interface {
+	NotifyNewReaction(postOwnerID, reactorName, emoji, postID string)
+}
+
+func NewReactionHandler(reactionService *services.ReactionService, pushService reactionPushNotifier, wsHub *websocket.Hub) *ReactionHandler {
 	return &ReactionHandler{
 		reactionService: reactionService,
 		pushService:     pushService,
@@ -104,6 +108,15 @@ func (h *ReactionHandler) AddReaction(c *gin.Context) {
 		}
 		if event, err := websocket.NewEvent(websocket.EventReactionAdded, groupID, userID, payload); err == nil {
 			h.wsHub.BroadcastToGroup(event)
+		}
+	}
+
+	// Send push notification to post owner (if not self)
+	if h.pushService != nil {
+		user, _ := middleware.GetCurrentUser(c)
+		postOwnerID, err := h.reactionService.GetPostOwnerID(postID)
+		if err == nil && postOwnerID != userID {
+			h.pushService.NotifyNewReaction(postOwnerID, user.Name, reaction.Emoji(), postID)
 		}
 	}
 

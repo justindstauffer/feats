@@ -2,6 +2,7 @@ package services
 
 import (
 	"log"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,8 +29,11 @@ func NewPushService(db *gorm.DB, cfg *config.Config) *PushService {
 	}
 
 	// Only initialize if APNs is configured
-	if cfg.APNsKeyPath == "" || cfg.APNsKeyID == "" || cfg.APNsTeamID == "" {
-		log.Println("Push notifications disabled: APNs not configured")
+	if strings.TrimSpace(cfg.APNsKeyPath) == "" ||
+		strings.TrimSpace(cfg.APNsKeyID) == "" ||
+		strings.TrimSpace(cfg.APNsTeamID) == "" ||
+		strings.TrimSpace(cfg.APNsBundleID) == "" {
+		log.Println("Push notifications disabled: APNs not fully configured (key path/id, team id, bundle id required)")
 		return service
 	}
 

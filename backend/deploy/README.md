@@ -72,6 +72,12 @@ openssl rand -base64 32
 # Edit the config
 nano backend/.env.production
 # Change JWT_SECRET to the generated value
+# If using push notifications, also set:
+# APNS_KEY_PATH=/app/secrets/apns.p8
+# APNS_KEY_ID=...
+# APNS_TEAM_ID=...
+# APNS_BUNDLE_ID=com.jstauff.Feats
+# APNS_PRODUCTION=false   # true for App Store/TestFlight production APNs
 ```
 
 ### 5. Deploy
