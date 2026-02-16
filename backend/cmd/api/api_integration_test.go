@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -350,6 +351,146 @@ func TestServeImageRejectsUserOutsideGroup(t *testing.T) {
 	rr := app.request(t, http.MethodGet, "/images/"+image.ID, nil, outsiderToken)
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 for outsider image access, got %d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestServeImageAllowsGroupMember(t *testing.T) {
+	app := newAPITestApp(t)
+	owner := app.createUser(t, "owner2@example.com", "ValidPass123!", "Owner2", models.RoleUser)
+	memberUser := app.createUser(t, "member2@example.com", "ValidPass123!", "Member2", models.RoleUser)
+	memberToken := app.loginToken(t, memberUser.Email, "ValidPass123!")
+
+	groupID := uuid.New().String()
+	now := time.Now()
+	group := models.Group{
+		ID:        groupID,
+		Name:      "Member Group",
+		CreatedBy: owner.ID,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := app.db.Create(&group).Error; err != nil {
+		t.Fatalf("failed to create group: %v", err)
+	}
+	ownerMembership := models.GroupMember{
+		ID:       uuid.New().String(),
+		GroupID:  groupID,
+		UserID:   owner.ID,
+		Role:     models.GroupRoleAdmin,
+		JoinedAt: now,
+	}
+	if err := app.db.Create(&ownerMembership).Error; err != nil {
+		t.Fatalf("failed to create owner membership: %v", err)
+	}
+	memberMembership := models.GroupMember{
+		ID:       uuid.New().String(),
+		GroupID:  groupID,
+		UserID:   memberUser.ID,
+		Role:     models.GroupRoleMember,
+		JoinedAt: now,
+	}
+	if err := app.db.Create(&memberMembership).Error; err != nil {
+		t.Fatalf("failed to create member membership: %v", err)
+	}
+
+	post := models.Post{
+		ID:             uuid.New().String(),
+		GroupID:        groupID,
+		UserID:         owner.ID,
+		ActivityTypeID: mustSeededActivityID(t, app.db, "Running"),
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	if err := app.db.Create(&post).Error; err != nil {
+		t.Fatalf("failed to create post: %v", err)
+	}
+
+	if err := os.MkdirAll(app.cfg.StoragePath+"/images", 0755); err != nil {
+		t.Fatalf("failed to create image storage dir: %v", err)
+	}
+	imagePath := app.cfg.StoragePath + "/images/" + uuid.New().String() + ".jpg"
+	if err := os.WriteFile(imagePath, []byte("fake-jpeg-content"), 0644); err != nil {
+		t.Fatalf("failed to write image file: %v", err)
+	}
+	image := models.PostImage{
+		ID:           uuid.New().String(),
+		PostID:       post.ID,
+		FilePath:     imagePath,
+		DisplayOrder: 0,
+		CreatedAt:    now,
+	}
+	if err := app.db.Create(&image).Error; err != nil {
+		t.Fatalf("failed to create post image: %v", err)
+	}
+
+	rr := app.request(t, http.MethodGet, "/images/"+image.ID, nil, memberToken)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for group member image access, got %d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestServeImageAllowsAdminOutsideGroup(t *testing.T) {
+	app := newAPITestApp(t)
+	owner := app.createUser(t, "owner3@example.com", "ValidPass123!", "Owner3", models.RoleUser)
+	admin := app.createUser(t, "global-admin@example.com", "ValidPass123!", "Global Admin", models.RoleAdmin)
+	adminToken := app.loginToken(t, admin.Email, "ValidPass123!")
+
+	groupID := uuid.New().String()
+	now := time.Now()
+	group := models.Group{
+		ID:        groupID,
+		Name:      "Admin Access Group",
+		CreatedBy: owner.ID,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := app.db.Create(&group).Error; err != nil {
+		t.Fatalf("failed to create group: %v", err)
+	}
+	membership := models.GroupMember{
+		ID:       uuid.New().String(),
+		GroupID:  groupID,
+		UserID:   owner.ID,
+		Role:     models.GroupRoleAdmin,
+		JoinedAt: now,
+	}
+	if err := app.db.Create(&membership).Error; err != nil {
+		t.Fatalf("failed to create owner membership: %v", err)
+	}
+
+	post := models.Post{
+		ID:             uuid.New().String(),
+		GroupID:        groupID,
+		UserID:         owner.ID,
+		ActivityTypeID: mustSeededActivityID(t, app.db, "Running"),
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	if err := app.db.Create(&post).Error; err != nil {
+		t.Fatalf("failed to create post: %v", err)
+	}
+
+	if err := os.MkdirAll(app.cfg.StoragePath+"/images", 0755); err != nil {
+		t.Fatalf("failed to create image storage dir: %v", err)
+	}
+	imagePath := app.cfg.StoragePath + "/images/" + uuid.New().String() + ".jpg"
+	if err := os.WriteFile(imagePath, []byte("fake-jpeg-content-admin"), 0644); err != nil {
+		t.Fatalf("failed to write image file: %v", err)
+	}
+	image := models.PostImage{
+		ID:           uuid.New().String(),
+		PostID:       post.ID,
+		FilePath:     imagePath,
+		DisplayOrder: 0,
+		CreatedAt:    now,
+	}
+	if err := app.db.Create(&image).Error; err != nil {
+		t.Fatalf("failed to create post image: %v", err)
+	}
+
+	rr := app.request(t, http.MethodGet, "/images/"+image.ID, nil, adminToken)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for admin image access, got %d body=%s", rr.Code, rr.Body.String())
 	}
 }
 
