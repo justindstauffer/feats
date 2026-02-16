@@ -1,0 +1,39 @@
+name: Backend Security Checks
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-security.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  backend-security:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Unit and integration tests
+        run: go test ./...
+
+      - name: Race detector
+        run: go test -race ./...
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Vulnerability scan
+        run: govulncheck ./...
