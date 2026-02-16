@@ -368,6 +368,9 @@ func (s *GroupService) CreateInvite(groupID, userID string, input CreateInviteIn
 func (s *GroupService) RedeemInvite(code, userID string) (*models.Group, error) {
 	// Normalize code (remove dashes, uppercase)
 	code = strings.ToUpper(strings.ReplaceAll(code, "-", ""))
+	if len(code) != 12 {
+		return nil, ErrInvalidInviteCode
+	}
 	formattedCode := fmt.Sprintf("%s-%s-%s", code[0:4], code[4:8], code[8:12])
 
 	var invite models.GroupInvite

@@ -73,7 +73,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	// Validate and consume the beta invite code
-	_, err := h.betaInviteService.ValidateAndConsume(input.InviteCode)
+	invite, err := h.betaInviteService.ValidateAndConsume(input.InviteCode)
 	if err != nil {
 		switch err {
 		case services.ErrBetaInviteInvalid:
@@ -103,6 +103,9 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	// Create the user
 	user, err := h.userService.RegisterUser(input.Email, input.Password, input.Name, h.authService)
 	if err != nil {
+		// Registration failed after consume; restore invite usage.
+		_ = h.betaInviteService.RollbackConsume(invite.ID)
+
 		switch err {
 		case services.ErrEmailExists:
 			c.JSON(http.StatusConflict, models.ErrorResponse(
