@@ -62,7 +62,10 @@ func main() {
 
 	appHandlers := initHandlers(appServices, cfg, wsHub)
 	appMiddleware := initMiddleware(appServices.auth, appServices.group, cfg)
-	router := setupRouter(cfg, appHandlers, appMiddleware)
+	router, err := setupRouter(cfg, appHandlers, appMiddleware)
+	if err != nil {
+		log.Fatalf("Failed to set up router: %v", err)
+	}
 
 	// Start server
 	log.Printf("Starting server on port %s", cfg.Port)

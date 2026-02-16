@@ -67,7 +67,10 @@ func newAPITestApp(t *testing.T) *apiTestApp {
 	svc := initServices(db, cfg)
 	h := initHandlers(svc, cfg, nil)
 	m := initMiddleware(svc.auth, svc.group, cfg)
-	router := setupRouter(cfg, h, m)
+	router, err := setupRouter(cfg, h, m)
+	if err != nil {
+		t.Fatalf("failed to setup router: %v", err)
+	}
 
 	return &apiTestApp{
 		router:   router,

@@ -75,11 +75,12 @@ type Config struct {
 }
 
 func Load() (*Config, error) {
-	cfg := &Config{
-		// Server defaults
-		Port:           getEnv("PORT", "8080"),
-		GinMode:        getEnv("GIN_MODE", "release"),
-		AllowedOrigins: getStringSliceEnv("ALLOWED_ORIGINS"),
+		cfg := &Config{
+			// Server defaults
+			Port:           getEnv("PORT", "8080"),
+			GinMode:        getEnv("GIN_MODE", "release"),
+			TrustedProxies: getStringSliceEnv("TRUSTED_PROXIES"),
+			AllowedOrigins: getStringSliceEnv("ALLOWED_ORIGINS"),
 
 		// Database defaults
 		DatabasePath: getEnv("DATABASE_PATH", "./feats.db"),
