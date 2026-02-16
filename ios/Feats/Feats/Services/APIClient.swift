@@ -294,8 +294,10 @@ final class APIClient {
             }
 
             #if DEBUG
-            if let jsonString = String(data: data, encoding: .utf8) {
-                print("Response from \(endpoint): \(jsonString.prefix(500))")
+            if let httpResponse = response as? HTTPURLResponse {
+                debugLog("Response \(httpResponse.statusCode) from \(endpoint)")
+            } else {
+                debugLog("Response from \(endpoint)")
             }
             #endif
 
@@ -307,6 +309,12 @@ final class APIClient {
         } catch {
             throw APIClientError.networkError(error)
         }
+    }
+
+    private func debugLog(_ message: String) {
+        #if DEBUG
+        print("APIClient: \(message)")
+        #endif
     }
 
     // MARK: - Group-Scoped Requests

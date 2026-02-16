@@ -17,16 +17,16 @@ final class PushNotificationService {
     // MARK: - Request Permission
 
     func requestPermission() async -> Bool {
-        print("🔔 Requesting push notification permission...")
+        debugLog("Requesting push notification permission")
         let center = UNUserNotificationCenter.current()
 
         // Check current status first
         let settings = await center.notificationSettings()
-        print("🔔 Current authorization status: \(settings.authorizationStatus.rawValue)")
+        debugLog("Current authorization status: \(settings.authorizationStatus.rawValue)")
 
         do {
             let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
-            print("🔔 Permission granted: \(granted)")
+            debugLog("Permission granted: \(granted)")
             self.isAuthorized = granted
 
             if granted {
@@ -35,7 +35,7 @@ final class PushNotificationService {
 
             return granted
         } catch {
-            print("🔔 Push notification permission error: \(error)")
+            debugLog("Push notification permission error")
             return false
         }
     }
@@ -62,7 +62,7 @@ final class PushNotificationService {
     func didRegisterForRemoteNotifications(deviceToken: Data) {
         let tokenString = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
         self.deviceToken = tokenString
-        print("Device token: \(tokenString)")
+        debugLog("Received APNs device token")
 
         // Send token to backend
         Task {
@@ -71,14 +71,14 @@ final class PushNotificationService {
     }
 
     func didFailToRegisterForRemoteNotifications(error: Error) {
-        print("Failed to register for remote notifications: \(error)")
+        debugLog("Failed to register for remote notifications")
     }
 
     // MARK: - Backend Registration
 
     private func sendTokenToBackend(_ token: String) async {
         guard AuthService.shared.isAuthenticated else {
-            print("Not authenticated, skipping token registration")
+            debugLog("Skipping token registration while unauthenticated")
             return
         }
 
@@ -89,9 +89,9 @@ final class PushNotificationService {
                 method: .post,
                 body: request
             )
-            print("Device token registered with backend")
+            debugLog("Device token registered with backend")
         } catch {
-            print("Failed to register device token: \(error)")
+            debugLog("Failed to register device token")
         }
     }
 
@@ -105,9 +105,9 @@ final class PushNotificationService {
                 method: .delete,
                 body: request
             )
-            print("Device token unregistered from backend")
+            debugLog("Device token unregistered from backend")
         } catch {
-            print("Failed to unregister device token: \(error)")
+            debugLog("Failed to unregister device token")
         }
     }
 
@@ -126,24 +126,24 @@ final class PushNotificationService {
         if let type = userInfo["type"] as? String {
             switch type {
             case "post":
-                if let postId = userInfo["post_id"] as? String {
+                if userInfo["post_id"] as? String != nil {
                     // Navigate to post
-                    print("Navigate to post: \(postId)")
+                    debugLog("Navigate to post")
                 }
             case "comment":
-                if let postId = userInfo["post_id"] as? String {
+                if userInfo["post_id"] as? String != nil {
                     // Navigate to post with comments
-                    print("Navigate to post comments: \(postId)")
+                    debugLog("Navigate to post comments")
                 }
             case "reaction":
-                if let postId = userInfo["post_id"] as? String {
+                if userInfo["post_id"] as? String != nil {
                     // Navigate to post
-                    print("Navigate to post: \(postId)")
+                    debugLog("Navigate to post")
                 }
             case "challenge":
-                if let challengeId = userInfo["challenge_id"] as? String {
+                if userInfo["challenge_id"] as? String != nil {
                     // Navigate to challenge
-                    print("Navigate to challenge: \(challengeId)")
+                    debugLog("Navigate to challenge")
                 }
             default:
                 break
@@ -155,6 +155,12 @@ final class PushNotificationService {
 
     func clearBadge() {
         UNUserNotificationCenter.current().setBadgeCount(0)
+    }
+
+    private func debugLog(_ message: String) {
+        #if DEBUG
+        print("PushNotificationService: \(message)")
+        #endif
     }
 }
 
