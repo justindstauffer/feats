@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document tracks the development progress of the Feats iOS app. Use this as a reference for future Claude Code sessions.
+This document tracks the development progress of the Feats iOS app. Use this as a reference for future coding-agent sessions.
 
 ## Tech Stack
 
@@ -312,6 +312,11 @@ Moved `.refreshable` modifier directly onto the `List` in `ChallengesView` inste
 - [x] Force light mode for beta (.preferredColorScheme(.light))
 - [x] Keyboard dismissal on CreatePostView (Done button + scroll dismiss)
 - [x] App icon added (trophy emoji)
+
+### Phase 3 Service Cleanup (Feb 2026)
+- [x] Refactored service-layer internals in `AuthService`, `APIClient`, `WebSocketService`
+- [x] Cleaned state/helper flow in `AppState` and `GroupService`
+- [x] No intended behavior changes; cleanup focused on maintainability and clearer service boundaries
 
 ### Real-Time Updates (WebSockets) - COMPLETED
 - [x] Backend WebSocket hub infrastructure (`internal/websocket/hub.go`)
@@ -666,15 +671,30 @@ This ensures date comparisons for challenges work correctly with the iOS app's l
    cd backend && make dev
    ```
 
-2. Open Xcode project and run on simulator
+2. Build iOS targets from repo root (fast compile/link health check):
+   ```bash
+   make ios-build
+   ```
 
-3. Login with your admin credentials:
+3. Run iOS unit tests from repo root:
+   ```bash
+   make ios-test
+   ```
+
+4. If destination names change after an Xcode update, list valid simulator names:
+   ```bash
+   make ios-destinations
+   ```
+
+5. Open Xcode project and run on simulator if you want full interactive debugging/UI testing
+
+6. Login with your admin credentials:
    - Email: justindstauffer@gmail.com
    - Password: (your password)
 
-4. Create a post to test the flow
+7. Create a post to test the flow
 
-5. Verify:
+8. Verify:
    - Images load correctly in feed
    - Challenge progress updates after posting
    - Pull-to-refresh works on all tabs
@@ -701,3 +721,4 @@ This ensures date comparisons for challenges work correctly with the iOS app's l
 
 - First launch may show briefly logged in before checking auth state
 - Date formatting may vary based on device locale
+- CLI `xcodebuild test` may hang in restricted/sandboxed environments during simulator attach; use local Xcode run or `make ios-build` for reliable compile validation

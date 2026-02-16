@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document tracks the development progress of the Feats API backend. Use this as a reference for future Claude Code sessions.
+This document tracks the development progress of the Feats API backend. Use this as a reference for future coding-agent sessions.
 
 ## Tech Stack
 
@@ -18,7 +18,9 @@ This document tracks the development progress of the Feats API backend. Use this
 backend/
 ├── cmd/
 │   ├── api/
-│   │   └── main.go              # Main API entry point
+│   │   ├── main.go              # Thin API entry point
+│   │   ├── bootstrap.go         # Server/service wiring and router setup
+│   │   └── api_integration_test.go # API integration tests
 │   └── admin/
 │       └── main.go              # CLI tool to create admin user
 ├── internal/
@@ -28,6 +30,7 @@ backend/
 │   │   └── database.go          # DB connection, migrations, seeding
 │   ├── handlers/
 │   │   ├── auth.go              # Login, logout, password reset
+│   │   ├── post_workflow.go     # Post side-effect workflow orchestration
 │   │   ├── user.go              # User CRUD, admin functions
 │   │   ├── group.go             # Group management, invites, membership
 │   │   ├── post.go              # Posts and image uploads
@@ -60,6 +63,7 @@ backend/
 │   │   └── models.go            # Response types and helpers
 │   ├── services/
 │   │   ├── auth.go              # Authentication logic, JWT, password validation
+│   │   ├── beta_invite.go       # Beta invite generation/validation
 │   │   ├── user.go              # User management
 │   │   ├── group.go             # Group CRUD, membership, invites
 │   │   ├── audit.go             # Security event logging
@@ -69,7 +73,8 @@ backend/
 │   │   ├── comment.go           # Comment CRUD
 │   │   ├── streak.go            # Streak calculation and updates
 │   │   ├── challenge.go         # Challenge management
-│   │   └── goal.go              # Goal management
+│   │   ├── goal.go              # Goal management
+│   │   └── push.go              # Push notification dispatch/service layer
 │   └── storage/                 # (Placeholder for S3 abstraction)
 ├── migrations/                  # (Placeholder for manual migrations)
 ├── .env.example                 # Environment variable template
@@ -154,6 +159,17 @@ backend/
 - [x] Leaderboard is per-group
 - [x] Soft-delete membership (preserves historical posts)
 - [x] Group admin can manage members and invites
+
+### Stability + Refactor Pass (Feb 2026)
+- [x] Extracted API bootstrap/wiring from `cmd/api/main.go` to `cmd/api/bootstrap.go`
+- [x] Extracted post side-effect orchestration into `internal/handlers/post_workflow.go`
+- [x] Added integration tests for auth invite flow and post->streak behavior (`cmd/api/api_integration_test.go`)
+- [x] Added service tests for invite parsing and beta invite usage rules (`internal/services/group_test.go`, `internal/services/beta_invite_test.go`)
+- [x] Fixed malformed invite-code panic risk in group invite redemption flow
+- [x] Added registration rollback behavior so failed registration un-consumes beta invites
+- [x] Fixed push service status-code format bug
+- [x] `go test ./...` passes
+- [x] `go test -race ./...` passes
 
 ## API Endpoints
 
@@ -276,6 +292,14 @@ Server runs at `http://localhost:8080`
 | `make db-reset` | Delete database file |
 | `make generate-secret` | Generate a secure JWT secret |
 
+Root repo Makefile commands:
+
+| Command | Description |
+|---------|-------------|
+| `make ios-build` | Build iOS app + test targets (`build-for-testing`) |
+| `make ios-test` | Run iOS unit tests target (`FeatsTests`) |
+| `make ios-destinations` | Show available Xcode destinations |
+
 ## TODO / Not Yet Implemented
 
 ### Backend
@@ -286,8 +310,10 @@ Server runs at `http://localhost:8080`
 - [ ] Email service integration (optional)
 - [ ] Background job for hard-deleting old soft-deleted content
 - [ ] Background job for cleaning old audit logs
-- [ ] Unit tests
-- [ ] Integration tests
+- [x] Unit tests (core service coverage started)
+- [x] Integration tests (API integration coverage started)
+- [ ] Expand unit test coverage across all services/handlers
+- [ ] Expand integration coverage for group admin, comments, reactions, and challenges
 
 ### Future Security Enhancements (Low Priority)
 - [ ] JWT issuer/audience validation - Add `iss` and `aud` claims for defense-in-depth
