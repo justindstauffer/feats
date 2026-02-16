@@ -196,7 +196,7 @@ backend/
 | PUT | `/api/v1/users/me` | Update current user |
 | GET | `/api/v1/users/:id` | Get user |
 | POST | `/api/v1/devices` | Register device token |
-| DELETE | `/api/v1/devices/:token` | Unregister device |
+| DELETE | `/api/v1/devices` | Unregister device token (owner-scoped) |
 | POST | `/api/v1/invites/redeem` | Redeem invite code |
 | GET | `/images/:id` | Serve image |
 
