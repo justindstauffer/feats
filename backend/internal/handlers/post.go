@@ -6,49 +6,32 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jstauff/feats-api/internal/config"
 	"github.com/jstauff/feats-api/internal/middleware"
 	"github.com/jstauff/feats-api/internal/models"
 	"github.com/jstauff/feats-api/internal/services"
-	"github.com/jstauff/feats-api/internal/websocket"
 )
 
 type PostHandler struct {
-	postService      *services.PostService
-	streakService    *services.StreakService
-	challengeService *services.ChallengeService
-	goalService      *services.GoalService
-	auditService     *services.AuditService
-	groupService     *services.GroupService
-	pushService      *services.PushService
-	cfg              *config.Config
-	wsHub            *websocket.Hub
+	postService  *services.PostService
+	auditService *services.AuditService
+	cfg          *config.Config
+	postWorkflow *PostWorkflow
 }
 
 func NewPostHandler(
 	postService *services.PostService,
-	streakService *services.StreakService,
-	challengeService *services.ChallengeService,
-	goalService *services.GoalService,
 	auditService *services.AuditService,
-	groupService *services.GroupService,
-	pushService *services.PushService,
 	cfg *config.Config,
-	wsHub *websocket.Hub,
+	postWorkflow *PostWorkflow,
 ) *PostHandler {
 	return &PostHandler{
-		postService:      postService,
-		streakService:    streakService,
-		challengeService: challengeService,
-		goalService:      goalService,
-		auditService:     auditService,
-		groupService:     groupService,
-		pushService:      pushService,
-		cfg:              cfg,
-		wsHub:            wsHub,
+		postService:  postService,
+		auditService: auditService,
+		cfg:          cfg,
+		postWorkflow: postWorkflow,
 	}
 }
 
@@ -115,52 +98,8 @@ func (h *PostHandler) CreatePost(c *gin.Context) {
 		return
 	}
 
-	// Update streak for this group
-	h.streakService.UpdateStreakForActivity(groupID, userID, time.Now())
-
-	// Update challenge progress and get completed challenges (within this group)
-	completedChallengeIDs, _ := h.challengeService.UpdateProgressForActivity(groupID, userID, input.ActivityTypeID)
-
-	// Create completion posts for any just-completed challenges
-	for _, challengeID := range completedChallengeIDs {
-		challenge, err := h.challengeService.GetChallengeByID(groupID, challengeID)
-		if err == nil {
-			h.postService.CreateChallengeCompletionPost(groupID, userID, challenge.Title)
-		}
-	}
-
-	// Update goal progress for this group
-	h.goalService.UpdateProgressForActivity(groupID, userID, input.ActivityTypeID)
-
-	// Broadcast post.created event via WebSocket
-	if h.wsHub != nil {
-		user, _ := middleware.GetCurrentUser(c)
-		payload := websocket.PostCreatedPayload{
-			PostID:         post.ID,
-			UserID:         post.UserID,
-			UserName:       user.Name,
-			ActivityTypeID: post.ActivityTypeID,
-			ActivityName:   post.ActivityType.Name,
-			ActivityIcon:   getActivityIcon(post.ActivityType.Icon),
-			Description:    getDescription(post.Description),
-			ImageCount:     len(post.Images),
-		}
-		if event, err := websocket.NewEvent(websocket.EventPostCreated, groupID, userID, payload); err == nil {
-			h.wsHub.BroadcastToGroup(event)
-		}
-	}
-
-	// Send push notification to other group members
-	if h.pushService != nil && h.groupService != nil {
-		user, _ := middleware.GetCurrentUser(c)
-		memberIDs, err := h.groupService.GetMemberUserIDs(groupID)
-		if err == nil && len(memberIDs) > 1 {
-			activityName := ""
-			if post.ActivityType.Name != "" {
-				activityName = post.ActivityType.Name
-			}
-			go h.pushService.NotifyNewPost(memberIDs, userID, user.Name, activityName, post.ID)
-		}
+	if h.postWorkflow != nil {
+		h.postWorkflow.HandlePostCreated(c, post, groupID, userID, input.ActivityTypeID, h.postService)
 	}
 
 	c.JSON(http.StatusCreated, models.SuccessResponse(post))
@@ -235,12 +174,8 @@ func (h *PostHandler) DeletePost(c *gin.Context) {
 		return
 	}
 
-	// Broadcast post.deleted event via WebSocket
-	if h.wsHub != nil {
-		payload := websocket.PostDeletedPayload{PostID: postID}
-		if event, err := websocket.NewEvent(websocket.EventPostDeleted, groupID, userID, payload); err == nil {
-			h.wsHub.BroadcastToGroup(event)
-		}
+	if h.postWorkflow != nil {
+		h.postWorkflow.HandlePostDeleted(postID, groupID, userID)
 	}
 
 	c.JSON(http.StatusOK, models.SuccessResponse(gin.H{
@@ -375,8 +310,8 @@ func (h *PostHandler) ServeImage(c *gin.Context) {
 		userID, _ := middleware.GetCurrentUserID(c)
 		log.Printf("SECURITY: Path traversal attempt by user %s, attempted path: %s", userID, imagePath)
 		h.auditService.Log(services.AuditLogInput{
-			UserID:  &userID,
-			Action:  models.AuditActionAuthorizationFail,
+			UserID: &userID,
+			Action: models.AuditActionAuthorizationFail,
 			Details: map[string]interface{}{
 				"reason":         "path_traversal_attempt",
 				"attempted_path": imagePath,

@@ -80,12 +80,14 @@ func initServices(db *gorm.DB, cfg *config.Config) *appServices {
 }
 
 func initHandlers(s *appServices, cfg *config.Config, wsHub *websocket.Hub) *appHandlers {
+	postWorkflow := handlers.NewPostWorkflow(s.streak, s.challenge, s.goal, s.group, s.push, wsHub)
+
 	return &appHandlers{
 		auth:       handlers.NewAuthHandler(s.auth, s.user, s.betaInvite, s.audit, cfg),
 		user:       handlers.NewUserHandler(s.user, s.audit, s.auth),
 		group:      handlers.NewGroupHandler(s.group, s.audit, wsHub),
 		betaInvite: handlers.NewBetaInviteHandler(s.betaInvite),
-		post:       handlers.NewPostHandler(s.post, s.streak, s.challenge, s.goal, s.audit, s.group, s.push, cfg, wsHub),
+		post:       handlers.NewPostHandler(s.post, s.audit, cfg, postWorkflow),
 		activity:   handlers.NewActivityHandler(s.activity),
 		reaction:   handlers.NewReactionHandler(s.reaction, s.push, wsHub),
 		comment:    handlers.NewCommentHandler(s.comment, s.push, wsHub),
