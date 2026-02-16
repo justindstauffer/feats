@@ -88,9 +88,10 @@ func (s *PushService) RegisterToken(userID, tokenStr, platform string) error {
 	return nil
 }
 
-// UnregisterToken removes a device token
-func (s *PushService) UnregisterToken(tokenStr string) error {
-	return s.db.Where("token = ?", tokenStr).Delete(&models.DeviceToken{}).Error
+// UnregisterToken removes a device token for a specific user.
+// This prevents one user from unregistering another user's device token.
+func (s *PushService) UnregisterToken(userID, tokenStr string) error {
+	return s.db.Where("user_id = ? AND token = ?", userID, tokenStr).Delete(&models.DeviceToken{}).Error
 }
 
 // UnregisterUserTokens removes all device tokens for a user
@@ -167,16 +168,16 @@ func (s *PushService) sendIOS(deviceToken, title, body string, data map[string]i
 		return
 	}
 
-	if !res.Sent() {
-		log.Printf("Push notification failed: %d - %s", res.StatusCode, res.Reason)
-		// Remove invalid tokens
-		if res.Reason == apns2.ReasonBadDeviceToken ||
-			res.Reason == apns2.ReasonUnregistered ||
-			res.Reason == apns2.ReasonExpiredToken {
-			s.UnregisterToken(deviceToken)
+		if !res.Sent() {
+			log.Printf("Push notification failed: %d - %s", res.StatusCode, res.Reason)
+			// Remove invalid tokens
+			if res.Reason == apns2.ReasonBadDeviceToken ||
+				res.Reason == apns2.ReasonUnregistered ||
+				res.Reason == apns2.ReasonExpiredToken {
+				_ = s.db.Where("token = ?", deviceToken).Delete(&models.DeviceToken{}).Error
+			}
 		}
 	}
-}
 
 // Notification helpers for common events
 
