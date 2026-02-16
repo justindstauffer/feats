@@ -1,0 +1,43 @@
+project:
+  name: feats
+  repo_root: /Users/jstauff/Documents/Development/feats-api
+  last_updated: 2026-02-16
+
+modules:
+  backend:
+    path: backend
+    language: go
+    entrypoint: backend/cmd/api/main.go
+    primary_router: backend/cmd/api/bootstrap.go
+    test_command: cd backend && go test ./...
+    race_test_command: cd backend && go test -race ./...
+  ios:
+    path: ios/Feats
+    language: swift
+    project: ios/Feats/Feats.xcodeproj
+    scheme: Feats
+    build_command: make ios-build
+    test_command: make ios-test
+
+security_baseline:
+  websocket_subscribe_authz: true
+  query_token_redaction: true
+  image_object_authorization: true
+  device_token_owner_scope: true
+  trusted_proxies_explicit: true
+  backend_security_ci: true
+
+key_docs:
+  agent_entry: AGENTS.md
+  current_status: docs/status/now.md
+  changelog: docs/status/changelog.md
+  runbooks:
+    - docs/runbooks/development.md
+    - docs/runbooks/security-checks.md
+    - docs/runbooks/release-and-merge.md
+  architecture:
+    - docs/architecture/ADR-001-group-scoped-multi-tenancy.md
+    - docs/architecture/ADR-002-security-baseline-2026-02.md
+  legacy_history:
+    - backend-progress.md
+    - ios-progress.md
