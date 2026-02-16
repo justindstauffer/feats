@@ -275,13 +275,28 @@ func (h *PostHandler) DeleteImage(c *gin.Context) {
 
 func (h *PostHandler) ServeImage(c *gin.Context) {
 	imageID := c.Param("id")
+	userID, _ := middleware.GetCurrentUserID(c)
+	isAdmin := middleware.IsAdmin(c)
 
-	imagePath, err := h.postService.GetImagePath(imageID)
+	imagePath, err := h.postService.GetAuthorizedImagePath(imageID, userID, isAdmin)
 	if err != nil {
-		c.JSON(http.StatusNotFound, models.ErrorResponse(
-			models.ErrCodeNotFound,
-			"Image not found",
-		))
+		switch err {
+		case services.ErrImageNotFound:
+			c.JSON(http.StatusNotFound, models.ErrorResponse(
+				models.ErrCodeNotFound,
+				"Image not found",
+			))
+		case services.ErrNotAuthorized:
+			c.JSON(http.StatusForbidden, models.ErrorResponse(
+				models.ErrCodeForbidden,
+				"Access denied",
+			))
+		default:
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse(
+				models.ErrCodeInternalError,
+				"An error occurred",
+			))
+		}
 		return
 	}
 
@@ -307,7 +322,6 @@ func (h *PostHandler) ServeImage(c *gin.Context) {
 	// Ensure the image path starts with the storage path (prevent path traversal)
 	if !strings.HasPrefix(absImagePath, absStoragePath+string(filepath.Separator)) {
 		// Log the traversal attempt
-		userID, _ := middleware.GetCurrentUserID(c)
 		log.Printf("SECURITY: Path traversal attempt by user %s, attempted path: %s", userID, imagePath)
 		h.auditService.Log(services.AuditLogInput{
 			UserID: &userID,

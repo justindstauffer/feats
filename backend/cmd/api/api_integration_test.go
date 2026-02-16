@@ -291,3 +291,71 @@ func TestCreatePostUpdatesStreakForGroup(t *testing.T) {
 		t.Fatalf("expected current_streak=1, got %d", streak.CurrentStreak)
 	}
 }
+
+func TestServeImageRejectsUserOutsideGroup(t *testing.T) {
+	app := newAPITestApp(t)
+	owner := app.createUser(t, "owner@example.com", "ValidPass123!", "Owner", models.RoleUser)
+	outsider := app.createUser(t, "outsider@example.com", "ValidPass123!", "Outsider", models.RoleUser)
+	outsiderToken := app.loginToken(t, outsider.Email, "ValidPass123!")
+
+	groupID := uuid.New().String()
+	now := time.Now()
+	group := models.Group{
+		ID:        groupID,
+		Name:      "Private Group",
+		CreatedBy: owner.ID,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := app.db.Create(&group).Error; err != nil {
+		t.Fatalf("failed to create group: %v", err)
+	}
+	member := models.GroupMember{
+		ID:       uuid.New().String(),
+		GroupID:  groupID,
+		UserID:   owner.ID,
+		Role:     models.GroupRoleAdmin,
+		JoinedAt: now,
+	}
+	if err := app.db.Create(&member).Error; err != nil {
+		t.Fatalf("failed to create owner membership: %v", err)
+	}
+
+	post := models.Post{
+		ID:             uuid.New().String(),
+		GroupID:        groupID,
+		UserID:         owner.ID,
+		ActivityTypeID: mustSeededActivityID(t, app.db, "Running"),
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	if err := app.db.Create(&post).Error; err != nil {
+		t.Fatalf("failed to create post: %v", err)
+	}
+
+	image := models.PostImage{
+		ID:           uuid.New().String(),
+		PostID:       post.ID,
+		FilePath:     app.cfg.StoragePath + "/images/" + uuid.New().String() + ".jpg",
+		DisplayOrder: 0,
+		CreatedAt:    now,
+	}
+	if err := app.db.Create(&image).Error; err != nil {
+		t.Fatalf("failed to create post image: %v", err)
+	}
+
+	rr := app.request(t, http.MethodGet, "/images/"+image.ID, nil, outsiderToken)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for outsider image access, got %d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
+func mustSeededActivityID(t *testing.T, db *gorm.DB, name string) string {
+	t.Helper()
+
+	var activity models.ActivityType
+	if err := db.Where("name = ?", name).First(&activity).Error; err != nil {
+		t.Fatalf("failed to load seeded activity %s: %v", name, err)
+	}
+	return activity.ID
+}
