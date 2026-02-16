@@ -388,6 +388,23 @@ Core activity types are seeded automatically:
 | Membership Validation | Middleware checks group membership/admin for all group routes |
 | Soft Delete Membership | Historical posts preserved when users leave |
 
+### Security Baseline (Feb 2026)
+
+| Area | Baseline |
+|------|----------|
+| WebSocket subscriptions | Dynamic `subscribe` requests are server-authorized against active group membership |
+| Token logging safety | Sensitive query params (`token`, `access_token`, `refresh_token`, `authorization`) are redacted in request logs |
+| Image object authorization | `/images/:id` requires object-level authorization (group member or global admin) before file serve |
+| Device token ownership | Device token unregister is scoped to authenticated owner (`user_id + token`) |
+| Proxy/IP trust | Gin trusted proxies are explicitly configured via `TRUSTED_PROXIES`; default is trust none |
+| Security regression guardrails | CI runs `go test ./...`, `go test -race ./...`, and `govulncheck ./...` on backend PRs |
+
+Operational invariants for future work:
+- Never introduce new auth tokens in URL query params without explicit redaction/masking strategy.
+- Keep object-level authorization checks in service-layer read paths (not only at route-level middleware).
+- Preserve explicit trusted-proxy configuration; do not rely on framework defaults for client IP trust.
+- Update security regression tests whenever auth/authz behavior changes.
+
 ## Reference Documents
 
 - `SPECIFICATION.md` - Full project specification with security requirements
