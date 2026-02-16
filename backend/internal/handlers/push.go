@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -45,6 +46,7 @@ func (h *PushHandler) RegisterToken(c *gin.Context) {
 	}
 
 	if err := h.pushService.RegisterToken(userID, req.Token, req.Platform); err != nil {
+		log.Printf("device registration failed for user %s platform %s: %v", userID, req.Platform, err)
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse(
 			models.ErrCodeInternalError,
 			"Failed to register device token",

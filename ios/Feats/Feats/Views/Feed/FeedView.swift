@@ -72,13 +72,14 @@ struct FeedView: View {
     @Environment(AppState.self) private var appState
     @Environment(GroupService.self) private var groupService
     @State private var showGroupSwitcher = false
+    @State private var navigationPath: [String] = []
 
     private var currentGroupId: String? {
         groupService.currentGroup?.id
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             SwiftUI.Group {
                 if viewModel.posts.isEmpty && viewModel.isLoading {
                     ProgressView("Loading posts...")
@@ -139,6 +140,17 @@ struct FeedView: View {
             .sheet(isPresented: $showGroupSwitcher) {
                 GroupSwitcherView()
             }
+            .onChange(of: appState.pendingPostNavigationID) { _, postID in
+                guard let postID else { return }
+                navigationPath = [postID]
+                appState.pendingPostNavigationID = nil
+            }
+            .navigationDestination(for: String.self) { postID in
+                PostDetailLoaderView(
+                    postID: postID,
+                    initialPost: viewModel.posts.first(where: { $0.id == postID })
+                )
+            }
         }
     }
 
@@ -146,7 +158,7 @@ struct FeedView: View {
         ScrollView {
             LazyVStack(spacing: 16) {
                 ForEach(viewModel.posts) { post in
-                    NavigationLink(destination: PostDetailView(post: post)) {
+                    NavigationLink(value: post.id) {
                         PostCard(post: post)
                     }
                     .buttonStyle(.plain)
@@ -173,6 +185,73 @@ struct FeedView: View {
             }
             .padding()
         }
+    }
+}
+
+private struct PostDetailLoaderView: View {
+    let postID: String
+    let initialPost: Post?
+
+    @Environment(GroupService.self) private var groupService
+
+    @State private var post: Post?
+    @State private var isLoading = true
+    @State private var errorMessage: String?
+
+    private let apiClient = APIClient.shared
+
+    var body: some View {
+        SwiftUI.Group {
+            if let post {
+                PostDetailView(post: post)
+            } else if isLoading {
+                ProgressView("Loading post...")
+            } else {
+                ContentUnavailableView(
+                    "Post Not Available",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(errorMessage ?? "Unable to open this post right now.")
+                )
+            }
+        }
+        .task {
+            await loadPost()
+        }
+    }
+
+    private func loadPost() async {
+        if let initialPost {
+            post = initialPost
+            isLoading = false
+            return
+        }
+
+        let groupsToSearch: [Group]
+        if let current = groupService.currentGroup {
+            groupsToSearch = [current] + groupService.groups.filter { $0.id != current.id }
+        } else {
+            groupsToSearch = groupService.groups
+        }
+
+        for group in groupsToSearch {
+            do {
+                let fetched: Post = try await apiClient.groupRequest(
+                    groupId: group.id,
+                    endpoint: "/posts/\(postID)"
+                )
+                if groupService.currentGroup?.id != group.id {
+                    groupService.selectGroup(group)
+                }
+                post = fetched
+                isLoading = false
+                return
+            } catch {
+                continue
+            }
+        }
+
+        errorMessage = "Post may have been deleted or is in a group you no longer have access to."
+        isLoading = false
     }
 }
 

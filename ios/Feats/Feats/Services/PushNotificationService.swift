@@ -126,23 +126,23 @@ final class PushNotificationService {
         if let type = userInfo["type"] as? String {
             switch type {
             case "post":
-                if userInfo["post_id"] as? String != nil {
-                    // Navigate to post
-                    debugLog("Navigate to post")
+                if let postID = userInfo["post_id"] as? String {
+                    AppState.shared.navigateToPost(postID: postID)
+                    debugLog("Navigate to post \(postID)")
                 }
             case "comment":
-                if userInfo["post_id"] as? String != nil {
-                    // Navigate to post with comments
-                    debugLog("Navigate to post comments")
+                if let postID = userInfo["post_id"] as? String {
+                    AppState.shared.navigateToPost(postID: postID)
+                    debugLog("Navigate to post comments \(postID)")
                 }
             case "reaction":
-                if userInfo["post_id"] as? String != nil {
-                    // Navigate to post
-                    debugLog("Navigate to post")
+                if let postID = userInfo["post_id"] as? String {
+                    AppState.shared.navigateToPost(postID: postID)
+                    debugLog("Navigate to post \(postID)")
                 }
             case "challenge":
                 if userInfo["challenge_id"] as? String != nil {
-                    // Navigate to challenge
+                    AppState.shared.navigateToChallenges()
                     debugLog("Navigate to challenge")
                 }
             default:

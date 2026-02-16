@@ -6,6 +6,7 @@ class AppState {
     static let shared = AppState()
 
     var selectedTab: Int = 0
+    var pendingPostNavigationID: String?
     var feedNeedsRefresh = false
     var challengesNeedRefresh = false
     var profileNeedsRefresh = false
@@ -98,6 +99,16 @@ class AppState {
 
     func navigateToFeed() {
         selectedTab = 0
+    }
+
+    func navigateToPost(postID: String) {
+        selectedTab = 0
+        pendingPostNavigationID = postID
+        feedNeedsRefresh = true
+    }
+
+    func navigateToChallenges() {
+        selectedTab = 1
     }
 
     func postCreated() {

@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/sideshow/apns2/payload"
 	"github.com/sideshow/apns2/token"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type PushService struct {
@@ -19,6 +21,13 @@ type PushService struct {
 	client   *apns2.Client
 	bundleID string
 	enabled  bool
+}
+
+type tokenColumnInfo struct {
+	conflictColumn string
+	selectExpr     string
+	hasToken       bool
+	hasLegacyToken bool
 }
 
 func NewPushService(db *gorm.DB, cfg *config.Config) *PushService {
@@ -63,39 +72,55 @@ func NewPushService(db *gorm.DB, cfg *config.Config) *PushService {
 
 // RegisterToken saves or updates a device token for a user
 func (s *PushService) RegisterToken(userID, tokenStr, platform string) error {
-	// Check if token already exists
-	var existing models.DeviceToken
-	err := s.db.Where("token = ?", tokenStr).First(&existing).Error
-
-	if err == gorm.ErrRecordNotFound {
-		// Create new token
-		deviceToken := models.DeviceToken{
-			ID:        uuid.New().String(),
-			UserID:    userID,
-			Token:     tokenStr,
-			Platform:  platform,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		}
-		return s.db.Create(&deviceToken).Error
-	} else if err != nil {
+	colInfo, err := s.resolveTokenColumnInfo()
+	if err != nil {
 		return err
 	}
 
-	// Update existing token if user changed
-	if existing.UserID != userID {
-		existing.UserID = userID
-		existing.UpdatedAt = time.Now()
-		return s.db.Save(&existing).Error
+	now := time.Now()
+	values := map[string]interface{}{
+		"id":         uuid.New().String(),
+		"user_id":    userID,
+		"platform":   platform,
+		"created_at": now,
+		"updated_at": now,
+	}
+	if colInfo.hasToken {
+		values["token"] = tokenStr
+	}
+	if colInfo.hasLegacyToken {
+		values["device_token"] = tokenStr
 	}
 
-	return nil
+	updateValues := map[string]interface{}{
+		"user_id":    userID,
+		"platform":   platform,
+		"updated_at": now,
+	}
+	if colInfo.hasToken {
+		updateValues["token"] = tokenStr
+	}
+	if colInfo.hasLegacyToken {
+		updateValues["device_token"] = tokenStr
+	}
+
+	// Atomic upsert avoids race conditions under repeated registration.
+	return s.db.Table("device_tokens").Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: colInfo.conflictColumn}},
+		DoUpdates: clause.Assignments(updateValues),
+	}).Create(values).Error
 }
 
 // UnregisterToken removes a device token for a specific user.
 // This prevents one user from unregistering another user's device token.
 func (s *PushService) UnregisterToken(userID, tokenStr string) error {
-	return s.db.Where("user_id = ? AND token = ?", userID, tokenStr).Delete(&models.DeviceToken{}).Error
+	colInfo, err := s.resolveTokenColumnInfo()
+	if err != nil {
+		return err
+	}
+	return s.db.Table("device_tokens").
+		Where("user_id = ? AND "+colInfo.conflictColumn+" = ?", userID, tokenStr).
+		Delete(nil).Error
 }
 
 // UnregisterUserTokens removes all device tokens for a user
@@ -109,8 +134,16 @@ func (s *PushService) SendToUser(userID, title, body string, data map[string]int
 		return nil
 	}
 
+	colInfo, err := s.resolveTokenColumnInfo()
+	if err != nil {
+		return err
+	}
+
 	var tokens []models.DeviceToken
-	if err := s.db.Where("user_id = ?", userID).Find(&tokens).Error; err != nil {
+	if err := s.db.Table("device_tokens").
+		Select("id, user_id, "+colInfo.selectExpr+", platform, created_at, updated_at").
+		Where("user_id = ?", userID).
+		Find(&tokens).Error; err != nil {
 		return err
 	}
 
@@ -130,8 +163,15 @@ func (s *PushService) SendToUsers(userIDs []string, excludeUserID string, title,
 		return nil
 	}
 
+	colInfo, err := s.resolveTokenColumnInfo()
+	if err != nil {
+		return err
+	}
+
 	var tokens []models.DeviceToken
-	query := s.db.Where("user_id IN ?", userIDs)
+	query := s.db.Table("device_tokens").
+		Select("id, user_id, "+colInfo.selectExpr+", platform, created_at, updated_at").
+		Where("user_id IN ?", userIDs)
 	if excludeUserID != "" {
 		query = query.Where("user_id != ?", excludeUserID)
 	}
@@ -172,16 +212,67 @@ func (s *PushService) sendIOS(deviceToken, title, body string, data map[string]i
 		return
 	}
 
-		if !res.Sent() {
-			log.Printf("Push notification failed: %d - %s", res.StatusCode, res.Reason)
-			// Remove invalid tokens
-			if res.Reason == apns2.ReasonBadDeviceToken ||
-				res.Reason == apns2.ReasonUnregistered ||
-				res.Reason == apns2.ReasonExpiredToken {
-				_ = s.db.Where("token = ?", deviceToken).Delete(&models.DeviceToken{}).Error
+	if !res.Sent() {
+		log.Printf("Push notification failed: %d - %s", res.StatusCode, res.Reason)
+		// Remove invalid tokens
+		if res.Reason == apns2.ReasonBadDeviceToken ||
+			res.Reason == apns2.ReasonUnregistered ||
+			res.Reason == apns2.ReasonExpiredToken {
+			if colInfo, err := s.resolveTokenColumnInfo(); err == nil {
+				_ = s.db.Table("device_tokens").Where(colInfo.conflictColumn+" = ?", deviceToken).Delete(nil).Error
 			}
 		}
 	}
+}
+
+func (s *PushService) resolveTokenColumnInfo() (tokenColumnInfo, error) {
+	type pragmaColumn struct {
+		Name string `gorm:"column:name"`
+	}
+
+	var cols []pragmaColumn
+	if err := s.db.Raw("PRAGMA table_info(device_tokens)").Scan(&cols).Error; err != nil {
+		return tokenColumnInfo{}, err
+	}
+
+	hasToken := false
+	hasLegacyToken := false
+	for _, c := range cols {
+		if c.Name == "token" {
+			hasToken = true
+		}
+		if c.Name == "device_token" {
+			hasLegacyToken = true
+		}
+	}
+
+	if hasLegacyToken && hasToken {
+		return tokenColumnInfo{
+			conflictColumn: "device_token",
+			selectExpr:     "COALESCE(device_token, token) AS token",
+			hasToken:       true,
+			hasLegacyToken: true,
+		}, nil
+	}
+	if hasLegacyToken {
+		return tokenColumnInfo{
+			conflictColumn: "device_token",
+			selectExpr:     "device_token AS token",
+			hasToken:       false,
+			hasLegacyToken: true,
+		}, nil
+	}
+	if hasToken {
+		return tokenColumnInfo{
+			conflictColumn: "token",
+			selectExpr:     "token",
+			hasToken:       true,
+			hasLegacyToken: false,
+		}, nil
+	}
+
+	return tokenColumnInfo{}, fmt.Errorf("device_tokens table missing token columns (expected token or device_token)")
+}
 
 // Notification helpers for common events
 
