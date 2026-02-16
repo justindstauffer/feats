@@ -33,6 +33,9 @@ func CoreActivityTypes() []ActivityType {
 		{Name: "Running", Icon: stringPtr("🏃"), IsSystem: true},
 		{Name: "Cycling", Icon: stringPtr("🚴"), IsSystem: true},
 		{Name: "Swimming", Icon: stringPtr("🏊"), IsSystem: true},
+		{Name: "Nutrition", Icon: stringPtr("🥗"), IsSystem: true},
+		{Name: "Feat", Icon: stringPtr("⭐"), IsSystem: true},
+		{Name: "Exercise", Icon: stringPtr("🤸"), IsSystem: true},
 		{Name: "Achievement", Icon: stringPtr("🏆"), IsSystem: true},
 	}
 }
