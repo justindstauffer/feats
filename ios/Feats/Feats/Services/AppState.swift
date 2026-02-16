@@ -8,6 +8,7 @@ class AppState {
     var selectedTab: Int = 0
     var pendingPostNavigationID: String?
     var feedNeedsRefresh = false
+    var feedRefreshVersion = 0
     var challengesNeedRefresh = false
     var profileNeedsRefresh = false
     var streaksNeedRefresh = false
@@ -23,6 +24,7 @@ class AppState {
     private func markFeedNeedsRefresh(for groupId: String) {
         guard isCurrentGroup(groupId) else { return }
         feedNeedsRefresh = true
+        feedRefreshVersion += 1
     }
 
     private func markChallengesNeedRefresh(for groupId: String) {
@@ -92,6 +94,7 @@ class AppState {
 
     func refreshAllData() {
         feedNeedsRefresh = true
+        feedRefreshVersion += 1
         challengesNeedRefresh = true
         profileNeedsRefresh = true
         streaksNeedRefresh = true
@@ -105,6 +108,7 @@ class AppState {
         selectedTab = 0
         pendingPostNavigationID = postID
         feedNeedsRefresh = true
+        feedRefreshVersion += 1
     }
 
     func navigateToChallenges() {

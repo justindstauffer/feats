@@ -82,10 +82,13 @@ func (s *ReactionService) AddReaction(groupID, postID, userID string, reactionTy
 			// Same reaction, no change needed
 			return &existing, false, nil
 		}
-		existing.ReactionType = reactionType
-		if err := s.db.Save(&existing).Error; err != nil {
+		if err := s.db.Model(&models.Reaction{}).
+			Where("id = ?", existing.ID).
+			Update("reaction_type", reactionType).Error; err != nil {
 			return nil, false, err
 		}
+		existing.ReactionType = reactionType
+		_ = s.db.Preload("User").First(&existing, "id = ?", existing.ID).Error
 		return &existing, false, nil
 	}
 

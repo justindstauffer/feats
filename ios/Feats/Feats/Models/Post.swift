@@ -24,11 +24,16 @@ struct Post: Codable, Identifiable, Equatable {
     }
 
     static func == (lhs: Post, rhs: Post) -> Bool {
-        lhs.id == rhs.id &&
-        lhs.description == rhs.description &&
-        lhs.commentCount == rhs.commentCount &&
-        lhs.reactions?.count == rhs.reactions?.count &&
-        lhs.images?.count == rhs.images?.count
+        let lhsReactionSignature = lhs.reactions?.map { "\($0.userId):\($0.reactionType.rawValue)" } ?? []
+        let rhsReactionSignature = rhs.reactions?.map { "\($0.userId):\($0.reactionType.rawValue)" } ?? []
+        let lhsImageSignature = lhs.images?.map(\.id) ?? []
+        let rhsImageSignature = rhs.images?.map(\.id) ?? []
+
+        return lhs.id == rhs.id &&
+            lhs.description == rhs.description &&
+            lhs.commentCount == rhs.commentCount &&
+            lhsReactionSignature == rhsReactionSignature &&
+            lhsImageSignature == rhsImageSignature
     }
 }
 

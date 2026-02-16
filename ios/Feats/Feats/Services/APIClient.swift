@@ -273,6 +273,9 @@ final class APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = method.rawValue
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        request.setValue("no-cache", forHTTPHeaderField: "Pragma")
 
         if authenticated, let token = accessToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

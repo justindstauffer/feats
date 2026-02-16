@@ -9,17 +9,24 @@ class FeedViewModel {
     var currentPage = 1
     var hasMorePages = true
     var currentGroupId: String?
+    private var pendingRefreshGroupId: String?
 
     private let apiClient = APIClient.shared
 
     func loadPosts(groupId: String, refresh: Bool = false) async {
+        if refresh && isLoading {
+            pendingRefreshGroupId = groupId
+            return
+        }
+
         if refresh || currentGroupId != groupId {
             currentPage = 1
             hasMorePages = true
             currentGroupId = groupId
         }
 
-        guard !isLoading, hasMorePages else { return }
+        guard !isLoading else { return }
+        guard refresh || hasMorePages else { return }
 
         isLoading = true
         errorMessage = nil
@@ -50,6 +57,11 @@ class FeedViewModel {
         }
 
         isLoading = false
+
+        if let pendingGroupId = pendingRefreshGroupId {
+            pendingRefreshGroupId = nil
+            await loadPosts(groupId: pendingGroupId, refresh: true)
+        }
     }
 
     func deletePost(_ post: Post, groupId: String) async {
@@ -127,14 +139,18 @@ struct FeedView: View {
                 }
             }
             .onChange(of: appState.feedNeedsRefresh) { _, needsRefresh in
-                // Only auto-refresh if we're visible (not covered by another view)
-                // The onAppear will handle refresh when coming back from detail view
                 if needsRefresh, let groupId = currentGroupId {
                     Task {
                         await viewModel.loadPosts(groupId: groupId, refresh: true)
-                        // Don't clear the flag here - let onAppear handle it
-                        // This ensures we refresh again when returning from detail view
+                        appState.feedNeedsRefresh = false
                     }
+                }
+            }
+            .onChange(of: appState.feedRefreshVersion) { _, _ in
+                guard let groupId = currentGroupId else { return }
+                Task {
+                    await viewModel.loadPosts(groupId: groupId, refresh: true)
+                    appState.feedNeedsRefresh = false
                 }
             }
             .sheet(isPresented: $showGroupSwitcher) {
