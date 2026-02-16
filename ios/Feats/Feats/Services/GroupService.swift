@@ -20,6 +20,21 @@ final class GroupService {
 
     private init() {}
 
+    private func setCurrentGroup(_ group: Group?, refreshData: Bool) {
+        currentGroup = group
+
+        if let group {
+            UserDefaults.standard.set(group.id, forKey: lastActiveGroupKey)
+            WebSocketService.shared.switchToGroup(group.id)
+            if refreshData {
+                AppState.shared.refreshAllData()
+            }
+        } else {
+            UserDefaults.standard.removeObject(forKey: lastActiveGroupKey)
+            WebSocketService.shared.switchToGroup(nil)
+        }
+    }
+
     // MARK: - Load Groups
 
     func loadGroups() async {
@@ -33,13 +48,11 @@ final class GroupService {
             // Restore last active group or select first
             if let lastGroupId = UserDefaults.standard.string(forKey: lastActiveGroupKey),
                let lastGroup = groups.first(where: { $0.id == lastGroupId }) {
-                currentGroup = lastGroup
-                // Set up WebSocket subscription for restored group
-                WebSocketService.shared.switchToGroup(lastGroup.id)
+                setCurrentGroup(lastGroup, refreshData: false)
             } else if let firstGroup = groups.first {
                 selectGroup(firstGroup)
             } else {
-                currentGroup = nil
+                setCurrentGroup(nil, refreshData: false)
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -52,13 +65,7 @@ final class GroupService {
     // MARK: - Select Group
 
     func selectGroup(_ group: Group) {
-        currentGroup = group
-        UserDefaults.standard.set(group.id, forKey: lastActiveGroupKey)
-
-        // Update WebSocket subscription
-        WebSocketService.shared.switchToGroup(group.id)
-
-        AppState.shared.refreshAllData()
+        setCurrentGroup(group, refreshData: true)
     }
 
     // MARK: - Create Group
@@ -106,8 +113,7 @@ final class GroupService {
             if let firstGroup = groups.first {
                 selectGroup(firstGroup)
             } else {
-                currentGroup = nil
-                UserDefaults.standard.removeObject(forKey: lastActiveGroupKey)
+                setCurrentGroup(nil, refreshData: false)
             }
         }
     }
@@ -116,12 +122,8 @@ final class GroupService {
 
     func clear() {
         groups = []
-        currentGroup = nil
         hasLoadedGroups = false
         errorMessage = nil
-        UserDefaults.standard.removeObject(forKey: lastActiveGroupKey)
-
-        // Clear WebSocket subscription
-        WebSocketService.shared.switchToGroup(nil)
+        setCurrentGroup(nil, refreshData: false)
     }
 }

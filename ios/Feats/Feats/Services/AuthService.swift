@@ -14,6 +14,27 @@ final class AuthService {
 
     private init() {}
 
+    private func activateSession(user: User) async {
+        self.currentUser = user
+        self.isAuthenticated = true
+
+        // Load user's groups
+        await GroupService.shared.loadGroups()
+
+        // Connect WebSocket
+        await WebSocketService.shared.connect()
+
+        // Request push notification permission and register token
+        _ = await PushNotificationService.shared.requestPermission()
+    }
+
+    private func completeAuthenticatedSession(user: User, refreshToken: String, accessToken: String, expiresAt: Date) async throws {
+        // Save tokens
+        apiClient.setAccessToken(accessToken, expiresAt: expiresAt)
+        try keychain.saveRefreshToken(refreshToken)
+        await activateSession(user: user)
+    }
+
     // MARK: - Authentication State
 
     func checkAuthState() async {
@@ -26,17 +47,7 @@ final class AuthService {
         // Try to get current user to validate token
         do {
             let user: User = try await apiClient.request(endpoint: "/users/me")
-            self.currentUser = user
-            self.isAuthenticated = true
-
-            // Load user's groups
-            await GroupService.shared.loadGroups()
-
-            // Connect WebSocket
-            await WebSocketService.shared.connect()
-
-            // Request push notification permission and register token
-            _ = await PushNotificationService.shared.requestPermission()
+            await activateSession(user: user)
         } catch {
             // Token invalid, clear everything
             logout()
@@ -57,23 +68,12 @@ final class AuthService {
             body: request,
             authenticated: false
         )
-
-        // Save tokens
-        apiClient.setAccessToken(response.tokens.accessToken, expiresAt: response.tokens.expiresAt)
-        try keychain.saveRefreshToken(response.tokens.refreshToken)
-
-        // Set user
-        self.currentUser = response.user
-        self.isAuthenticated = true
-
-        // Load user's groups
-        await GroupService.shared.loadGroups()
-
-        // Connect WebSocket
-        await WebSocketService.shared.connect()
-
-        // Request push notification permission and register token
-        _ = await PushNotificationService.shared.requestPermission()
+        try await completeAuthenticatedSession(
+            user: response.user,
+            refreshToken: response.tokens.refreshToken,
+            accessToken: response.tokens.accessToken,
+            expiresAt: response.tokens.expiresAt
+        )
     }
 
     // MARK: - Login
@@ -90,23 +90,12 @@ final class AuthService {
             body: request,
             authenticated: false
         )
-
-        // Save tokens
-        apiClient.setAccessToken(response.tokens.accessToken, expiresAt: response.tokens.expiresAt)
-        try keychain.saveRefreshToken(response.tokens.refreshToken)
-
-        // Set user
-        self.currentUser = response.user
-        self.isAuthenticated = true
-
-        // Load user's groups
-        await GroupService.shared.loadGroups()
-
-        // Connect WebSocket
-        await WebSocketService.shared.connect()
-
-        // Request push notification permission and register token
-        _ = await PushNotificationService.shared.requestPermission()
+        try await completeAuthenticatedSession(
+            user: response.user,
+            refreshToken: response.tokens.refreshToken,
+            accessToken: response.tokens.accessToken,
+            expiresAt: response.tokens.expiresAt
+        )
     }
 
     // MARK: - Logout

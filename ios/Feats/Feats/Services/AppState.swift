@@ -15,70 +15,77 @@ class AppState {
         setupWebSocketHandlers()
     }
 
+    private func isCurrentGroup(_ groupId: String) -> Bool {
+        GroupService.shared.currentGroup?.id == groupId
+    }
+
+    private func markFeedNeedsRefresh(for groupId: String) {
+        guard isCurrentGroup(groupId) else { return }
+        feedNeedsRefresh = true
+    }
+
+    private func markChallengesNeedRefresh(for groupId: String) {
+        guard isCurrentGroup(groupId) else { return }
+        challengesNeedRefresh = true
+    }
+
+    private func markStreaksNeedRefresh(for groupId: String) {
+        guard isCurrentGroup(groupId) else { return }
+        streaksNeedRefresh = true
+    }
+
     private func setupWebSocketHandlers() {
         let ws = WebSocketService.shared
-        let groupService = GroupService.shared
 
         // When a post is created by someone else, refresh feed
-        ws.onPostCreated = { [weak self] payload, groupId in
-            guard groupService.currentGroup?.id == groupId else { return }
-            self?.feedNeedsRefresh = true
+        ws.onPostCreated = { [weak self] _, groupId in
+            self?.markFeedNeedsRefresh(for: groupId)
         }
 
         // When a post is deleted, refresh feed
         ws.onPostDeleted = { [weak self] _, groupId in
-            guard groupService.currentGroup?.id == groupId else { return }
-            self?.feedNeedsRefresh = true
+            self?.markFeedNeedsRefresh(for: groupId)
         }
 
         // When reactions change, refresh feed (for reaction counts)
         ws.onReactionAdded = { [weak self] _, groupId in
-            guard groupService.currentGroup?.id == groupId else { return }
-            self?.feedNeedsRefresh = true
+            self?.markFeedNeedsRefresh(for: groupId)
         }
 
         ws.onReactionRemoved = { [weak self] _, groupId in
-            guard groupService.currentGroup?.id == groupId else { return }
-            self?.feedNeedsRefresh = true
+            self?.markFeedNeedsRefresh(for: groupId)
         }
 
         // When comments are added, refresh feed (for comment counts)
         ws.onCommentCreated = { [weak self] _, groupId in
-            guard groupService.currentGroup?.id == groupId else { return }
-            self?.feedNeedsRefresh = true
+            self?.markFeedNeedsRefresh(for: groupId)
         }
 
         ws.onCommentDeleted = { [weak self] _, groupId in
-            guard groupService.currentGroup?.id == groupId else { return }
-            self?.feedNeedsRefresh = true
+            self?.markFeedNeedsRefresh(for: groupId)
         }
 
         // When challenges change, refresh challenges
         ws.onChallengeCreated = { [weak self] _, groupId in
-            guard groupService.currentGroup?.id == groupId else { return }
-            self?.challengesNeedRefresh = true
+            self?.markChallengesNeedRefresh(for: groupId)
         }
 
         ws.onChallengeJoined = { [weak self] _, groupId in
-            guard groupService.currentGroup?.id == groupId else { return }
-            self?.challengesNeedRefresh = true
+            self?.markChallengesNeedRefresh(for: groupId)
         }
 
         ws.onChallengeLeft = { [weak self] _, groupId in
-            guard groupService.currentGroup?.id == groupId else { return }
-            self?.challengesNeedRefresh = true
+            self?.markChallengesNeedRefresh(for: groupId)
         }
 
         // When members join/leave, could refresh member list if visible
         ws.onMemberJoined = { [weak self] _, groupId in
-            guard groupService.currentGroup?.id == groupId else { return }
             // Optionally trigger a notification or refresh
-            self?.streaksNeedRefresh = true
+            self?.markStreaksNeedRefresh(for: groupId)
         }
 
         ws.onMemberLeft = { [weak self] _, groupId in
-            guard groupService.currentGroup?.id == groupId else { return }
-            self?.streaksNeedRefresh = true
+            self?.markStreaksNeedRefresh(for: groupId)
         }
     }
 
