@@ -722,3 +722,15 @@ This ensures date comparisons for challenges work correctly with the iOS app's l
 - First launch may show briefly logged in before checking auth state
 - Date formatting may vary based on device locale
 - CLI `xcodebuild test` may hang in restricted/sandboxed environments during simulator attach; use local Xcode run or `make ios-build` for reliable compile validation
+
+## Security Baseline (Feb 2026)
+
+- Service logging is debug-gated (`#if DEBUG`) for network, websocket, and push-service internals.
+- Device tokens are not printed in app logs.
+- Avoid logging raw response bodies from authenticated API calls.
+- Avoid logging identifiers that unnecessarily increase data exposure surface in telemetry/log sinks.
+
+Operational invariants for future work:
+- Keep sensitive operational logs behind debug guards.
+- Do not add token/device-token values to logs.
+- Prefer coarse-grained status logs over payload dumps in networking code.
