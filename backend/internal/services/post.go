@@ -554,13 +554,40 @@ func stripHTMLTags(s string) string {
 	return result.String()
 }
 
-// GetImagePath returns the full filesystem path for an image
-func (s *PostService) GetImagePath(imageID string) (string, error) {
-	var image models.PostImage
-	if err := s.db.First(&image, "id = ?", imageID).Error; err != nil {
-		return "", fmt.Errorf("image not found")
+// GetAuthorizedImagePath returns an image path only if the requester is authorized.
+func (s *PostService) GetAuthorizedImagePath(imageID, userID string, isAdmin bool) (string, error) {
+	var row struct {
+		FilePath string
+		GroupID  string
 	}
-	return image.FilePath, nil
+
+	if err := s.db.
+		Table("post_images").
+		Select("post_images.file_path, posts.group_id").
+		Joins("JOIN posts ON posts.id = post_images.post_id").
+		Where("post_images.id = ?", imageID).
+		First(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", ErrImageNotFound
+		}
+		return "", err
+	}
+
+	if isAdmin {
+		return row.FilePath, nil
+	}
+
+	var membershipCount int64
+	if err := s.db.Model(&models.GroupMember{}).
+		Where("group_id = ? AND user_id = ? AND left_at IS NULL", row.GroupID, userID).
+		Count(&membershipCount).Error; err != nil {
+		return "", err
+	}
+	if membershipCount == 0 {
+		return "", ErrNotAuthorized
+	}
+
+	return row.FilePath, nil
 }
 
 // CreateChallengeCompletionPost creates a post announcing challenge completion
