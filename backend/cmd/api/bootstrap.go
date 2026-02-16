@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/gin-gonic/gin"
@@ -108,8 +109,18 @@ func initMiddleware(auth *services.AuthService, group *services.GroupService, cf
 	}
 }
 
-func setupRouter(cfg *config.Config, h *appHandlers, m *appMiddleware) *gin.Engine {
+func setupRouter(cfg *config.Config, h *appHandlers, m *appMiddleware) (*gin.Engine, error) {
 	router := gin.New()
+
+	trustedProxies := cfg.TrustedProxies
+	if len(trustedProxies) == 0 {
+		// Secure default: do not trust forwarded-for headers from any proxy.
+		trustedProxies = nil
+	}
+	if err := router.SetTrustedProxies(trustedProxies); err != nil {
+		return nil, fmt.Errorf("invalid TRUSTED_PROXIES config: %w", err)
+	}
+
 	router.Use(gin.Recovery())
 	router.Use(middleware.Logger())
 	router.Use(m.security.SecurityHeaders())
@@ -234,5 +245,5 @@ func setupRouter(cfg *config.Config, h *appHandlers, m *appMiddleware) *gin.Engi
 	}
 
 	router.GET("/images/:id", m.auth.Authenticate(), h.post.ServeImage)
-	return router
+	return router, nil
 }
