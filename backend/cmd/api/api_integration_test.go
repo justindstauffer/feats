@@ -359,3 +359,78 @@ func mustSeededActivityID(t *testing.T, db *gorm.DB, name string) string {
 	}
 	return activity.ID
 }
+
+func TestUnregisterDeviceTokenCannotDeleteOtherUsersToken(t *testing.T) {
+	app := newAPITestApp(t)
+	userA := app.createUser(t, "device-a@example.com", "ValidPass123!", "User A", models.RoleUser)
+	userB := app.createUser(t, "device-b@example.com", "ValidPass123!", "User B", models.RoleUser)
+	userAToken := app.loginToken(t, userA.Email, "ValidPass123!")
+
+	now := time.Now()
+	device := models.DeviceToken{
+		ID:        uuid.New().String(),
+		UserID:    userB.ID,
+		Token:     "apns-token-user-b",
+		Platform:  "ios",
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := app.db.Create(&device).Error; err != nil {
+		t.Fatalf("failed to create device token: %v", err)
+	}
+
+	rr := app.request(t, http.MethodDelete, "/api/v1/devices", map[string]any{
+		"token":    device.Token,
+		"platform": "ios",
+	}, userAToken)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var count int64
+	if err := app.db.Model(&models.DeviceToken{}).
+		Where("user_id = ? AND token = ?", userB.ID, device.Token).
+		Count(&count).Error; err != nil {
+		t.Fatalf("failed to check device token: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected user B device token to remain, count=%d", count)
+	}
+}
+
+func TestUnregisterDeviceTokenRemovesOwnToken(t *testing.T) {
+	app := newAPITestApp(t)
+	user := app.createUser(t, "device-self@example.com", "ValidPass123!", "User", models.RoleUser)
+	userToken := app.loginToken(t, user.Email, "ValidPass123!")
+
+	now := time.Now()
+	device := models.DeviceToken{
+		ID:        uuid.New().String(),
+		UserID:    user.ID,
+		Token:     "apns-token-self",
+		Platform:  "ios",
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := app.db.Create(&device).Error; err != nil {
+		t.Fatalf("failed to create device token: %v", err)
+	}
+
+	rr := app.request(t, http.MethodDelete, "/api/v1/devices", map[string]any{
+		"token":    device.Token,
+		"platform": "ios",
+	}, userToken)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var count int64
+	if err := app.db.Model(&models.DeviceToken{}).
+		Where("user_id = ? AND token = ?", user.ID, device.Token).
+		Count(&count).Error; err != nil {
+		t.Fatalf("failed to check device token removal: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected own device token to be deleted, count=%d", count)
+	}
+}

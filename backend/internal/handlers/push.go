@@ -59,6 +59,15 @@ func (h *PushHandler) RegisterToken(c *gin.Context) {
 
 // UnregisterToken removes a device token
 func (h *PushHandler) UnregisterToken(c *gin.Context) {
+	userID, exists := middleware.GetCurrentUserID(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse(
+			models.ErrCodeUnauthorized,
+			"Unauthorized",
+		))
+		return
+	}
+
 	var req RegisterTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse(
@@ -68,7 +77,7 @@ func (h *PushHandler) UnregisterToken(c *gin.Context) {
 		return
 	}
 
-	if err := h.pushService.UnregisterToken(req.Token); err != nil {
+	if err := h.pushService.UnregisterToken(userID, req.Token); err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse(
 			models.ErrCodeInternalError,
 			"Failed to unregister device token",
