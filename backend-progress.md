@@ -4,6 +4,13 @@
 
 This document tracks the development progress of the Feats API backend. Use this as a reference for future coding-agent sessions.
 
+Last updated: 2026-02-21
+
+Current status:
+- Backend is stable for active iOS and Android clients.
+- Group-scoped APIs and security baseline controls are in place.
+- Android support work introduced additional push-service evolution; finalize production rollout details alongside Firebase/Play push rollout planning.
+
 Note: canonical day-to-day agent context now lives in:
 - `AGENTS.md`
 - `docs/status/now.md`

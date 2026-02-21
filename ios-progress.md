@@ -4,6 +4,13 @@
 
 This document tracks the development progress of the Feats iOS app. Use this as a reference for future coding-agent sessions.
 
+Last updated: 2026-02-21
+
+Current status:
+- iOS remains the most complete and polished client.
+- Notification/deep-link and group-scoped flows are live.
+- iOS behavior continues to serve as reference parity target for Android implementation decisions.
+
 Note: canonical day-to-day agent context now lives in:
 - `AGENTS.md`
 - `docs/status/now.md`
