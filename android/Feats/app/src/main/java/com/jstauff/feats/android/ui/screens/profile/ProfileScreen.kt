@@ -1,14 +1,18 @@
 package com.jstauff.feats.android.ui.screens.profile
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -25,9 +29,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.background
 import com.jstauff.feats.android.core.network.ApiClient
 import com.jstauff.feats.android.core.network.SessionManager
 import com.jstauff.feats.android.core.network.dto.BetaInviteDto
@@ -39,6 +45,7 @@ import com.jstauff.feats.android.core.network.dto.UpdateUserRequest
 import com.jstauff.feats.android.core.network.dto.UserDto
 import com.jstauff.feats.android.core.state.AppStateStore
 import com.jstauff.feats.android.core.state.GroupStateStore
+import com.jstauff.feats.android.ui.components.GroupHeaderCard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -221,8 +228,18 @@ fun ProfileScreen() {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
+            GroupHeaderCard(
+                title = "Profile",
+                currentGroup = currentGroup,
+                groups = groupState.groups,
+                onSelectGroup = { GroupStateStore.selectGroup(it) },
+                onReloadGroups = { scope.launch { GroupStateStore.loadGroups() } }
+            )
+        }
+
+        item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Profile", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("Account", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 OutlinedButton(
                     onClick = { scope.launch { viewModel.load(currentGroup.id, authState.userId) } },
                     enabled = !viewModel.isLoading && !viewModel.isSaving
@@ -233,10 +250,30 @@ fun ProfileScreen() {
         item {
             val user = viewModel.user
             if (user != null) {
-                Text(user.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text(user.email, style = MaterialTheme.typography.bodyMedium)
-                user.role?.takeIf { it.equals("admin", ignoreCase = true) }?.let {
-                    Text("Admin", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            Text(user.name.firstOrNull()?.uppercase() ?: "?", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        }
+                        Column {
+                            Text(user.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text(user.email, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            user.role?.takeIf { it.equals("admin", ignoreCase = true) }?.let {
+                                Text("Admin", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -244,31 +281,38 @@ fun ProfileScreen() {
         item { HorizontalDivider() }
 
         item {
-            Text("Edit Profile", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            OutlinedTextField(
-                value = viewModel.editName,
-                onValueChange = { viewModel.editName = it },
-                label = { Text("Name") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                enabled = !viewModel.isSaving
-            )
-            OutlinedTextField(
-                value = viewModel.editBio,
-                onValueChange = { viewModel.editBio = it },
-                label = { Text("Bio") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                minLines = 2,
-                enabled = !viewModel.isSaving
-            )
-            Button(
-                onClick = { scope.launch { viewModel.saveProfile() } },
-                enabled = viewModel.editName.trim().isNotEmpty() && !viewModel.isSaving,
-                modifier = Modifier.padding(top = 8.dp)
-            ) { Text("Save Profile") }
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text("Edit Profile", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(
+                        value = viewModel.editName,
+                        onValueChange = { viewModel.editName = it },
+                        label = { Text("Name") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        enabled = !viewModel.isSaving
+                    )
+                    OutlinedTextField(
+                        value = viewModel.editBio,
+                        onValueChange = { viewModel.editBio = it },
+                        label = { Text("Bio") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        minLines = 2,
+                        enabled = !viewModel.isSaving
+                    )
+                    Button(
+                        onClick = { scope.launch { viewModel.saveProfile() } },
+                        enabled = viewModel.editName.trim().isNotEmpty() && !viewModel.isSaving,
+                        modifier = Modifier.padding(top = 8.dp)
+                    ) { Text("Save Profile") }
+                }
+            }
         }
 
         item { HorizontalDivider() }

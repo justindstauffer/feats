@@ -2,13 +2,18 @@ package com.jstauff.feats.android.ui.screens.auth
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -17,6 +22,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.jstauff.feats.android.core.network.SessionManager
@@ -38,57 +44,77 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("Feats")
-
-        OutlinedTextField(
-            value = email,
-            onValueChange = { email = it },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 16.dp),
-            label = { Text("Email") }
+        Text("Feats", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+        Text(
+            "Track your progress with your group",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp, bottom = 18.dp)
         )
 
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 12.dp),
-            label = { Text("Password") },
-            visualTransformation = PasswordVisualTransformation()
-        )
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Email") }
+                )
 
-        error?.let {
-            Text(text = it, modifier = Modifier.padding(top = 8.dp))
-        }
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                    label = { Text("Password") },
+                    visualTransformation = PasswordVisualTransformation()
+                )
 
-        Button(
-            onClick = {
-                if (isLoading) return@Button
-                isLoading = true
-                error = null
+                error?.let {
+                    Text(
+                        text = it,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
 
-                scope.launch {
-                    try {
-                        SessionManager.login(email.trim(), password)
-                        GroupStateStore.loadGroups()
-                        onLoginSuccess()
-                    } catch (e: Exception) {
-                        error = e.message ?: "Login failed"
-                    } finally {
-                        isLoading = false
+                Spacer(modifier = Modifier.padding(top = 4.dp))
+
+                Button(
+                    onClick = {
+                        if (isLoading) return@Button
+                        isLoading = true
+                        error = null
+
+                        scope.launch {
+                            try {
+                                SessionManager.login(email.trim(), password)
+                                GroupStateStore.loadGroups()
+                                onLoginSuccess()
+                            } catch (e: Exception) {
+                                error = e.message ?: "Login failed"
+                            } finally {
+                                isLoading = false
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp)
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator()
+                    } else {
+                        Text("Sign In")
                     }
                 }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 16.dp)
-        ) {
-            if (isLoading) {
-                CircularProgressIndicator()
-            } else {
-                Text("Login")
             }
         }
     }

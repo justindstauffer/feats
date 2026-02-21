@@ -78,8 +78,8 @@ data class ReactionSummaryDto(
 
 @Serializable
 data class ReactionsPayloadDto(
-    val summary: List<ReactionSummaryDto> = emptyList(),
-    val reactions: List<ReactionDto> = emptyList()
+    val summary: List<ReactionSummaryDto>? = null,
+    val reactions: List<ReactionDto>? = null
 )
 
 @Serializable

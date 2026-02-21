@@ -12,6 +12,7 @@ import androidx.compose.material3.Surface
 import com.jstauff.feats.android.core.realtime.WebSocketService
 import com.jstauff.feats.android.core.state.AppStateStore
 import com.jstauff.feats.android.ui.FeatsApp
+import com.jstauff.feats.android.ui.theme.FeatsTheme
 
 class MainActivity : ComponentActivity() {
     private val notificationPermissionLauncher = registerForActivityResult(
@@ -24,7 +25,7 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermissionIfNeeded()
 
         setContent {
-            MaterialTheme {
+            FeatsTheme {
                 Surface(color = MaterialTheme.colorScheme.background) {
                     FeatsApp()
                 }

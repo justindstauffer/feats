@@ -7,6 +7,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.jstauff.feats.android.core.network.SessionManager
@@ -23,6 +25,7 @@ import com.jstauff.feats.android.core.state.BottomTab
 import com.jstauff.feats.android.core.state.GroupStateStore
 import com.jstauff.feats.android.ui.navigation.AppNavHost
 import com.jstauff.feats.android.ui.screens.groups.GroupOnboardingScreen
+import com.jstauff.feats.android.ui.theme.FeatsBlue
 
 @Composable
 fun FeatsApp() {
@@ -76,7 +79,10 @@ fun FeatsApp() {
 
     Scaffold(
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+                tonalElevation = 8.dp
+            ) {
                 BottomTab.entries.forEach { tab ->
                     NavigationBarItem(
                         selected = currentRoute == tab.route,
@@ -88,7 +94,11 @@ fun FeatsApp() {
                             }
                         },
                         icon = { Icon(imageVector = tab.icon, contentDescription = tab.label) },
-                        label = { Text(tab.label) }
+                        label = { Text(tab.label) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = FeatsBlue,
+                            selectedTextColor = FeatsBlue
+                        )
                     )
                 }
             }

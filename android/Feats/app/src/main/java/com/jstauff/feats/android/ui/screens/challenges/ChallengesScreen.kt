@@ -8,8 +8,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +37,7 @@ import com.jstauff.feats.android.core.network.dto.ChallengeDto
 import com.jstauff.feats.android.core.network.dto.CreateChallengeRequest
 import com.jstauff.feats.android.core.state.AppStateStore
 import com.jstauff.feats.android.core.state.GroupStateStore
+import com.jstauff.feats.android.ui.components.GroupHeaderCard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -197,12 +201,21 @@ fun ChallengesScreen() {
             val displayed = if (selectedTab == ChallengeTab.Active) activeChallenges else completedChallenges
 
             Column(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                GroupHeaderCard(
+                    title = "Challenges",
+                    currentGroup = currentGroup,
+                    groups = groupState.groups,
+                    onSelectGroup = { GroupStateStore.selectGroup(it) },
+                    onReloadGroups = { scope.launch { GroupStateStore.loadGroups() } },
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Challenges", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text("Challenge Activity", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     OutlinedButton(onClick = { scope.launch { viewModel.load(currentGroup.id) } }, enabled = !viewModel.isLoading) {
                         Text("Refresh")
                     }
@@ -221,84 +234,99 @@ fun ChallengesScreen() {
                     )
                 }
 
-                Text("Create Challenge", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                OutlinedTextField(
-                    value = viewModel.createTitle,
-                    onValueChange = { viewModel.createTitle = it },
-                    label = { Text("Title") },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !viewModel.isSubmitting
-                )
-                OutlinedTextField(
-                    value = viewModel.createDescription,
-                    onValueChange = { viewModel.createDescription = it },
-                    label = { Text("Description (optional)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2,
-                    enabled = !viewModel.isSubmitting
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedButton(onClick = { viewModel.createHasStartDate = !viewModel.createHasStartDate }, enabled = !viewModel.isSubmitting) {
-                        Text(if (viewModel.createHasStartDate) "Start: On" else "Start: Off")
-                    }
-                    OutlinedButton(onClick = { viewModel.createHasEndDate = !viewModel.createHasEndDate }, enabled = !viewModel.isSubmitting) {
-                        Text(if (viewModel.createHasEndDate) "End: On" else "End: Off")
-                    }
-                }
-                if (viewModel.createHasStartDate) {
-                    OutlinedTextField(
-                        value = viewModel.createStartDate,
-                        onValueChange = { viewModel.createStartDate = it },
-                        label = { Text("Start date (YYYY-MM-DD)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !viewModel.isSubmitting
-                    )
-                }
-                if (viewModel.createHasEndDate) {
-                    OutlinedTextField(
-                        value = viewModel.createEndDate,
-                        onValueChange = { viewModel.createEndDate = it },
-                        label = { Text("End date (YYYY-MM-DD)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !viewModel.isSubmitting
-                    )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Target: ${viewModel.createTargetCount}")
-                    OutlinedButton(
-                        onClick = { viewModel.createTargetCount = (viewModel.createTargetCount - 1).coerceAtLeast(1) },
-                        enabled = !viewModel.isSubmitting
-                    ) { Text("-") }
-                    OutlinedButton(
-                        onClick = { viewModel.createTargetCount = (viewModel.createTargetCount + 1).coerceAtMost(100) },
-                        enabled = !viewModel.isSubmitting
-                    ) { Text("+") }
-                }
-                if (viewModel.activities.isNotEmpty()) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
-                            onClick = { viewModel.createActivityId = null },
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Create Challenge", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        OutlinedTextField(
+                            value = viewModel.createTitle,
+                            onValueChange = { viewModel.createTitle = it },
+                            label = { Text("Title") },
+                            modifier = Modifier.fillMaxWidth(),
                             enabled = !viewModel.isSubmitting
-                        ) {
-                            val selectedMark = if (viewModel.createActivityId == null) "✓ " else ""
-                            Text("${selectedMark}Any")
-                        }
-                        viewModel.activities.take(4).forEach { activity ->
+                        )
+                        OutlinedTextField(
+                            value = viewModel.createDescription,
+                            onValueChange = { viewModel.createDescription = it },
+                            label = { Text("Description (optional)") },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 2,
+                            enabled = !viewModel.isSubmitting
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             OutlinedButton(
-                                onClick = { viewModel.createActivityId = activity.id },
+                                onClick = { viewModel.createHasStartDate = !viewModel.createHasStartDate },
                                 enabled = !viewModel.isSubmitting
                             ) {
-                                val selectedMark = if (viewModel.createActivityId == activity.id) "✓ " else ""
-                                Text("${selectedMark}${activity.icon ?: ""} ${activity.name}")
+                                Text(if (viewModel.createHasStartDate) "Start: On" else "Start: Off")
+                            }
+                            OutlinedButton(
+                                onClick = { viewModel.createHasEndDate = !viewModel.createHasEndDate },
+                                enabled = !viewModel.isSubmitting
+                            ) {
+                                Text(if (viewModel.createHasEndDate) "End: On" else "End: Off")
                             }
                         }
+                        if (viewModel.createHasStartDate) {
+                            OutlinedTextField(
+                                value = viewModel.createStartDate,
+                                onValueChange = { viewModel.createStartDate = it },
+                                label = { Text("Start date (YYYY-MM-DD)") },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = !viewModel.isSubmitting
+                            )
+                        }
+                        if (viewModel.createHasEndDate) {
+                            OutlinedTextField(
+                                value = viewModel.createEndDate,
+                                onValueChange = { viewModel.createEndDate = it },
+                                label = { Text("End date (YYYY-MM-DD)") },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = !viewModel.isSubmitting
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Target: ${viewModel.createTargetCount}")
+                            OutlinedButton(
+                                onClick = { viewModel.createTargetCount = (viewModel.createTargetCount - 1).coerceAtLeast(1) },
+                                enabled = !viewModel.isSubmitting
+                            ) { Text("-") }
+                            OutlinedButton(
+                                onClick = { viewModel.createTargetCount = (viewModel.createTargetCount + 1).coerceAtMost(100) },
+                                enabled = !viewModel.isSubmitting
+                            ) { Text("+") }
+                        }
+                        if (viewModel.activities.isNotEmpty()) {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                item {
+                                    OutlinedButton(
+                                        onClick = { viewModel.createActivityId = null },
+                                        enabled = !viewModel.isSubmitting
+                                    ) {
+                                        val selectedMark = if (viewModel.createActivityId == null) "✓ " else ""
+                                        Text("${selectedMark}Any")
+                                    }
+                                }
+                                items(viewModel.activities, key = { it.id }) { activity ->
+                                    OutlinedButton(
+                                        onClick = { viewModel.createActivityId = activity.id },
+                                        enabled = !viewModel.isSubmitting
+                                    ) {
+                                        val selectedMark = if (viewModel.createActivityId == activity.id) "✓ " else ""
+                                        Text("${selectedMark}${activity.icon ?: ""} ${activity.name}")
+                                    }
+                                }
+                            }
+                        }
+                        Button(
+                            onClick = { scope.launch { viewModel.create(currentGroup.id) } },
+                            enabled = viewModel.createTitle.trim().isNotEmpty() && !viewModel.isSubmitting
+                        ) {
+                            Text("Create Challenge")
+                        }
                     }
-                }
-                Button(
-                    onClick = { scope.launch { viewModel.create(currentGroup.id) } },
-                    enabled = viewModel.createTitle.trim().isNotEmpty() && !viewModel.isSubmitting
-                ) {
-                    Text("Create Challenge")
                 }
 
                 viewModel.error?.let {
@@ -354,7 +382,11 @@ private fun ChallengeCard(
     val isCompleted = mine?.completedAt != null
     val progress = mine?.progress ?: 0
 
-    androidx.compose.material3.Card(modifier = Modifier.fillMaxWidth()) {
+    androidx.compose.material3.Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+    ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(challenge.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             if (!challenge.description.isNullOrBlank()) {

@@ -4,15 +4,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -30,15 +32,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.jstauff.feats.android.core.network.ApiClient
-import com.jstauff.feats.android.core.network.dto.GroupDto
 import com.jstauff.feats.android.core.network.dto.Pagination
 import com.jstauff.feats.android.core.network.dto.PostDto
 import com.jstauff.feats.android.core.state.AppStateStore
 import com.jstauff.feats.android.core.state.GroupStateStore
+import com.jstauff.feats.android.core.network.dto.PostImageDto
 import com.jstauff.feats.android.ui.components.AuthenticatedImage
+import com.jstauff.feats.android.ui.components.GroupHeaderCard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -100,7 +104,7 @@ fun FeedScreen(onOpenPost: (String) -> Unit) {
     val viewModel = remember { FeedViewModel() }
     val scope = rememberCoroutineScope()
 
-    val currentGroup: GroupDto? = groupState.currentGroup
+    val currentGroup = groupState.currentGroup
 
     LaunchedEffect(currentGroup?.id) {
         currentGroup?.id?.let { groupId ->
@@ -114,13 +118,15 @@ fun FeedScreen(onOpenPost: (String) -> Unit) {
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        GroupHeader(
+        GroupHeaderCard(
+            title = "Feed",
             currentGroup = currentGroup,
             groups = groupState.groups,
-            onSelect = { GroupStateStore.selectGroup(it) },
+            onSelectGroup = { GroupStateStore.selectGroup(it) },
             onReloadGroups = {
                 scope.launch { GroupStateStore.loadGroups() }
-            }
+            },
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
         )
 
         when {
@@ -172,42 +178,6 @@ fun FeedScreen(onOpenPost: (String) -> Unit) {
                         }
                     }
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun GroupHeader(
-    currentGroup: GroupDto?,
-    groups: List<GroupDto>,
-    onSelect: (GroupDto) -> Unit,
-    onReloadGroups: () -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = currentGroup?.name ?: "No Group",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-
-            OutlinedButton(onClick = onReloadGroups) {
-                Text("Reload Groups")
-            }
-        }
-
-        if (groups.size > 1) {
-            Row(modifier = Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                groups.take(3).forEach { group ->
-                    OutlinedButton(onClick = { onSelect(group) }) {
-                        Text(group.name)
-                    }
-                }
             }
         }
     }
@@ -272,46 +242,161 @@ private fun PostCard(post: PostDto, onClick: () -> Unit) {
             .fillMaxWidth()
             .padding(bottom = 12.dp)
             .clickable(onClick = onClick)
+            .clip(RoundedCornerShape(14.dp)),
+        elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 5.dp)
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Text(
-                text = "${post.activityType?.icon ?: ""} ${post.activityType?.name ?: "Activity"}",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = post.user?.name ?: "Unknown",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(top = 2.dp)
-            )
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val name = post.user?.name ?: "Unknown"
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Text(name.firstOrNull()?.uppercase() ?: "?", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                }
+                Column(modifier = Modifier.padding(start = 10.dp)) {
+                    Text(
+                        text = name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = post.createdAt.take(16).replace("T", " "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                AssistChip(
+                    onClick = {},
+                    label = { Text("${post.activityType?.icon ?: ""} ${post.activityType?.name ?: "Activity"}") },
+                    colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                )
+            }
             if (!post.description.isNullOrBlank()) {
                 Text(
                     text = post.description,
                     style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(top = 4.dp)
+                    modifier = Modifier.padding(top = 10.dp)
                 )
             }
             if (!post.images.isNullOrEmpty()) {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(top = 8.dp)
-                ) {
-                    items(post.images.take(4), key = { it.id }) { image ->
-                        AuthenticatedImage(
-                            imageId = image.id,
-                            modifier = Modifier
-                                .width(240.dp)
-                                .height(200.dp)
-                        )
-                    }
-                }
+                PostImageGrid(
+                    images = post.images.take(4),
+                    modifier = Modifier.padding(top = 10.dp)
+                )
             }
             Text(
                 text = "${post.reactions?.size ?: 0} reactions • ${post.commentCount ?: 0} comments",
                 style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 6.dp)
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp)
             )
+        }
+    }
+}
+
+@Composable
+private fun PostImageGrid(images: List<PostImageDto>, modifier: Modifier = Modifier) {
+    when (images.size) {
+        1 -> {
+            AuthenticatedImage(
+                imageId = images[0].id,
+                modifier = modifier
+                    .fillMaxWidth()
+                    .aspectRatio(4f / 3f)
+                    .clip(RoundedCornerShape(10.dp))
+            )
+        }
+        2 -> {
+            Row(
+                modifier = modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                images.forEach { image ->
+                    AuthenticatedImage(
+                        imageId = image.id,
+                        modifier = Modifier
+                            .weight(1f)
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                    )
+                }
+            }
+        }
+        3 -> {
+            Row(
+                modifier = modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                AuthenticatedImage(
+                    imageId = images[0].id,
+                    modifier = Modifier
+                        .weight(1f)
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    AuthenticatedImage(
+                        imageId = images[1].id,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                    )
+                    AuthenticatedImage(
+                        imageId = images[2].id,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                    )
+                }
+            }
+        }
+        else -> {
+            Column(
+                modifier = modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    AuthenticatedImage(
+                        imageId = images[0].id,
+                        modifier = Modifier
+                            .weight(1f)
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                    )
+                    AuthenticatedImage(
+                        imageId = images[1].id,
+                        modifier = Modifier
+                            .weight(1f)
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    AuthenticatedImage(
+                        imageId = images[2].id,
+                        modifier = Modifier
+                            .weight(1f)
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                    )
+                    AuthenticatedImage(
+                        imageId = images[3].id,
+                        modifier = Modifier
+                            .weight(1f)
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                    )
+                }
+            }
         }
     }
 }

@@ -33,6 +33,9 @@ import com.jstauff.feats.android.core.network.ApiClient
 import com.jstauff.feats.android.core.network.dto.StreakDto
 import com.jstauff.feats.android.core.state.AppStateStore
 import com.jstauff.feats.android.core.state.GroupStateStore
+import com.jstauff.feats.android.ui.components.AvatarChip
+import com.jstauff.feats.android.ui.components.FeatsCard
+import com.jstauff.feats.android.ui.components.GroupHeaderCard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -85,40 +88,52 @@ fun LeaderboardScreen() {
                 CircularProgressIndicator()
             }
         }
-        viewModel.streaks.isEmpty() -> {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("No streaks yet", style = MaterialTheme.typography.titleMedium)
-                    OutlinedButton(
-                        onClick = { scope.launch { viewModel.load(currentGroup.id) } },
-                        modifier = Modifier.padding(top = 10.dp)
-                    ) { Text("Refresh") }
-                }
-            }
-        }
         else -> {
-            LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Streak Leaderboard", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        OutlinedButton(onClick = { scope.launch { viewModel.load(currentGroup.id) } }, enabled = !viewModel.isLoading) {
-                            Text("Refresh")
+            Column(modifier = Modifier.fillMaxSize()) {
+                GroupHeaderCard(
+                    title = "Leaderboard",
+                    currentGroup = currentGroup,
+                    groups = groupState.groups,
+                    onSelectGroup = { GroupStateStore.selectGroup(it) },
+                    onReloadGroups = { scope.launch { GroupStateStore.loadGroups() } },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Top Performers", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            OutlinedButton(onClick = { scope.launch { viewModel.load(currentGroup.id) } }, enabled = !viewModel.isLoading) {
+                                Text("Refresh")
+                            }
+                        }
+                        viewModel.error?.let {
+                            Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 6.dp))
                         }
                     }
-                    viewModel.error?.let {
-                        Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 6.dp))
+
+                    if (viewModel.streaks.isEmpty()) {
+                        item {
+                            Box(modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
+                                Text("No streaks yet")
+                            }
+                        }
+                    } else {
+                        itemsIndexed(viewModel.streaks, key = { _, item -> item.id }) { index, streak ->
+                            LeaderboardRow(
+                                rank = index + 1,
+                                streak = streak,
+                                isCurrentUser = streak.userId == authState.userId
+                            )
+                        }
                     }
-                }
-                itemsIndexed(viewModel.streaks, key = { _, item -> item.id }) { index, streak ->
-                    LeaderboardRow(
-                        rank = index + 1,
-                        streak = streak,
-                        isCurrentUser = streak.userId == authState.userId
-                    )
                 }
             }
         }
@@ -134,15 +149,14 @@ private fun LeaderboardRow(rank: Int, streak: StreakDto, isCurrentUser: Boolean)
         else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.65f)
     }
 
-    Row(
+    FeatsCard(
         modifier = Modifier
             .fillMaxWidth()
             .background(
                 color = if (isCurrentUser) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else Color.Transparent,
                 shape = MaterialTheme.shapes.medium
             )
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(2.dp)
     ) {
         Box(
             modifier = Modifier
@@ -157,6 +171,8 @@ private fun LeaderboardRow(rank: Int, streak: StreakDto, isCurrentUser: Boolean)
             Text(streak.user?.name ?: "Unknown", fontWeight = FontWeight.SemiBold)
             Text("Longest: ${streak.longestStreak} days", style = MaterialTheme.typography.bodySmall)
         }
+
+        AvatarChip(name = streak.user?.name ?: "?")
 
         Row(
             modifier = Modifier.fillMaxWidth(),
