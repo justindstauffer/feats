@@ -69,6 +69,7 @@ type Config struct {
 	APNsTeamID     string
 	APNsBundleID   string
 	APNsProduction bool
+	FCMServerKey   string
 
 	// General
 	Timezone string
@@ -113,6 +114,7 @@ func Load() (*Config, error) {
 		APNsTeamID:     getEnv("APNS_TEAM_ID", ""),
 		APNsBundleID:   getEnv("APNS_BUNDLE_ID", ""),
 		APNsProduction: getEnv("APNS_PRODUCTION", "false") == "true",
+		FCMServerKey:   getEnv("FCM_SERVER_KEY", ""),
 
 		// General
 		Timezone: getEnv("TIMEZONE", "UTC"),

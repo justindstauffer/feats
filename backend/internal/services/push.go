@@ -1,8 +1,11 @@
 package services
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"strings"
 	"time"
 
@@ -17,10 +20,14 @@ import (
 )
 
 type PushService struct {
-	db       *gorm.DB
-	client   *apns2.Client
-	bundleID string
-	enabled  bool
+	db          *gorm.DB
+	client      *apns2.Client
+	fcmClient   *http.Client
+	fcmServerKey string
+	bundleID    string
+	enabled     bool
+	apnsEnabled bool
+	fcmEnabled  bool
 }
 
 type tokenColumnInfo struct {
@@ -32,41 +39,54 @@ type tokenColumnInfo struct {
 
 func NewPushService(db *gorm.DB, cfg *config.Config) *PushService {
 	service := &PushService{
-		db:       db,
-		bundleID: cfg.APNsBundleID,
-		enabled:  false,
+		db:           db,
+		bundleID:     cfg.APNsBundleID,
+		fcmServerKey: strings.TrimSpace(cfg.FCMServerKey),
+		enabled:      false,
+		apnsEnabled:  false,
+		fcmEnabled:   false,
 	}
 
-	// Only initialize if APNs is configured
-	if strings.TrimSpace(cfg.APNsKeyPath) == "" ||
-		strings.TrimSpace(cfg.APNsKeyID) == "" ||
-		strings.TrimSpace(cfg.APNsTeamID) == "" ||
-		strings.TrimSpace(cfg.APNsBundleID) == "" {
-		log.Println("Push notifications disabled: APNs not fully configured (key path/id, team id, bundle id required)")
-		return service
-	}
+	// Initialize APNs when fully configured
+	if strings.TrimSpace(cfg.APNsKeyPath) != "" &&
+		strings.TrimSpace(cfg.APNsKeyID) != "" &&
+		strings.TrimSpace(cfg.APNsTeamID) != "" &&
+		strings.TrimSpace(cfg.APNsBundleID) != "" {
+		authKey, err := token.AuthKeyFromFile(cfg.APNsKeyPath)
+		if err != nil {
+			log.Printf("APNs disabled: failed to load APNs key: %v", err)
+		} else {
+			apnsToken := &token.Token{
+				AuthKey: authKey,
+				KeyID:   cfg.APNsKeyID,
+				TeamID:  cfg.APNsTeamID,
+			}
 
-	authKey, err := token.AuthKeyFromFile(cfg.APNsKeyPath)
-	if err != nil {
-		log.Printf("Push notifications disabled: failed to load APNs key: %v", err)
-		return service
-	}
-
-	apnsToken := &token.Token{
-		AuthKey: authKey,
-		KeyID:   cfg.APNsKeyID,
-		TeamID:  cfg.APNsTeamID,
-	}
-
-	// Use production or development based on config
-	if cfg.APNsProduction {
-		service.client = apns2.NewTokenClient(apnsToken).Production()
+			if cfg.APNsProduction {
+				service.client = apns2.NewTokenClient(apnsToken).Production()
+			} else {
+				service.client = apns2.NewTokenClient(apnsToken).Development()
+			}
+			service.apnsEnabled = true
+			log.Println("APNs notifications enabled")
+		}
 	} else {
-		service.client = apns2.NewTokenClient(apnsToken).Development()
+		log.Println("APNs notifications disabled: APNs not fully configured")
 	}
 
-	service.enabled = true
-	log.Println("Push notifications enabled")
+	// Initialize FCM when server key is provided
+	if service.fcmServerKey != "" {
+		service.fcmClient = &http.Client{Timeout: 10 * time.Second}
+		service.fcmEnabled = true
+		log.Println("FCM notifications enabled")
+	} else {
+		log.Println("FCM notifications disabled: FCM_SERVER_KEY not configured")
+	}
+
+	service.enabled = service.apnsEnabled || service.fcmEnabled
+	if !service.enabled {
+		log.Println("Push notifications disabled: no providers configured")
+	}
 	return service
 }
 
@@ -151,7 +171,9 @@ func (s *PushService) SendToUser(userID, title, body string, data map[string]int
 		if t.Platform == "ios" {
 			go s.sendIOS(t.Token, title, body, data)
 		}
-		// Add Android support here later if needed
+		if t.Platform == "android" {
+			go s.sendAndroid(t.Token, title, body, data)
+		}
 	}
 
 	return nil
@@ -183,12 +205,19 @@ func (s *PushService) SendToUsers(userIDs []string, excludeUserID string, title,
 		if t.Platform == "ios" {
 			go s.sendIOS(t.Token, title, body, data)
 		}
+		if t.Platform == "android" {
+			go s.sendAndroid(t.Token, title, body, data)
+		}
 	}
 
 	return nil
 }
 
 func (s *PushService) sendIOS(deviceToken, title, body string, data map[string]interface{}) {
+	if !s.apnsEnabled || s.client == nil {
+		return
+	}
+
 	p := payload.NewPayload().
 		AlertTitle(title).
 		AlertBody(body).
@@ -218,6 +247,68 @@ func (s *PushService) sendIOS(deviceToken, title, body string, data map[string]i
 		if res.Reason == apns2.ReasonBadDeviceToken ||
 			res.Reason == apns2.ReasonUnregistered ||
 			res.Reason == apns2.ReasonExpiredToken {
+			if colInfo, err := s.resolveTokenColumnInfo(); err == nil {
+				_ = s.db.Table("device_tokens").Where(colInfo.conflictColumn+" = ?", deviceToken).Delete(nil).Error
+			}
+		}
+	}
+}
+
+func (s *PushService) sendAndroid(deviceToken, title, body string, data map[string]interface{}) {
+	if !s.fcmEnabled || s.fcmClient == nil || s.fcmServerKey == "" {
+		return
+	}
+
+	payload := map[string]interface{}{
+		"to": deviceToken,
+		"notification": map[string]interface{}{
+			"title": title,
+			"body":  body,
+			"sound": "default",
+		},
+		"data": data,
+	}
+
+	bodyBytes, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("FCM payload marshal error: %v", err)
+		return
+	}
+
+	req, err := http.NewRequest(http.MethodPost, "https://fcm.googleapis.com/fcm/send", bytes.NewReader(bodyBytes))
+	if err != nil {
+		log.Printf("FCM request build error: %v", err)
+		return
+	}
+	req.Header.Set("Authorization", "key="+s.fcmServerKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.fcmClient.Do(req)
+	if err != nil {
+		log.Printf("FCM push error: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Success int `json:"success"`
+		Failure int `json:"failure"`
+		Results []struct {
+			Error string `json:"error"`
+		} `json:"results"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Printf("FCM decode error: %v", err)
+		return
+	}
+
+	if resp.StatusCode >= 400 || result.Failure > 0 {
+		reason := ""
+		if len(result.Results) > 0 {
+			reason = result.Results[0].Error
+		}
+		log.Printf("FCM push failed: status=%d reason=%s", resp.StatusCode, reason)
+		if reason == "NotRegistered" || reason == "InvalidRegistration" {
 			if colInfo, err := s.resolveTokenColumnInfo(); err == nil {
 				_ = s.db.Table("device_tokens").Where(colInfo.conflictColumn+" = ?", deviceToken).Delete(nil).Error
 			}
