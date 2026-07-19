@@ -60,8 +60,10 @@ go.work.sum
 .env.*.local
 
 # Storage directories (uploaded images)
+# Keep this anchored to backend/. An unanchored "storage/" also matched the
+# Android source package core/storage/, which silently kept SecureTokenStore.kt
+# out of version control.
 backend/storage/
-storage/
 
 # Log files
 *.log
@@ -140,6 +142,7 @@ temp/
 # =========================
 *.dSYM.zip
 *.dSYM
-debug/
+# No unanchored "debug/": it would match the Android app/src/debug/ source set.
+# Build outputs are already covered by the build/ rules above.
 backend/api
 backend/*.tar.gz
