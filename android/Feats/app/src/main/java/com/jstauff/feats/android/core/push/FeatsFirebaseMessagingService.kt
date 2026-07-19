@@ -1,13 +1,16 @@
 package com.jstauff.feats.android.core.push
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.jstauff.feats.android.MainActivity
@@ -35,6 +38,19 @@ class FeatsFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     private fun showNotification(title: String, body: String, data: Map<String, String>) {
+        // On Android 13+ posting without POST_NOTIFICATIONS is a silent no-op, so
+        // bail rather than building a notification that goes nowhere. Kept inline
+        // instead of extracted into a helper: lint's MissingPermission dataflow
+        // only recognises the check within the method that calls notify().
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+
         ensureChannel()
 
         val intent = Intent(this, MainActivity::class.java).apply {

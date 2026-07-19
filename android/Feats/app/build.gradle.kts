@@ -63,6 +63,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.activity:activity-compose:1.10.1")
+    // Transitive deps pull fragment 1.1.0, which trips lint's
+    // InvalidFragmentVersionForActivityResult (needs >= 1.3.0).
+    implementation("androidx.fragment:fragment:1.8.6")
 
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
