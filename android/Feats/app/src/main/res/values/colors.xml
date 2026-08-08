@@ -1,4 +1,6 @@
 <resources>
     <!-- Tint applied to the notification small icon. Matches FeatsBlue. -->
     <color name="notification_color">#2F80ED</color>
+    <!-- Adaptive launcher icon background: royal blue, matching the iOS icon. -->
+    <color name="ic_launcher_background">#3B5BDB</color>
 </resources>
