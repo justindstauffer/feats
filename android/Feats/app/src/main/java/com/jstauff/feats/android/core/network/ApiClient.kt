@@ -34,8 +34,13 @@ object ApiClient {
 
     private val authInterceptor = Interceptor { chain ->
         val original = chain.request()
+        // Do NOT force Content-Type here. Retrofit already sets it correctly per
+        // request: application/json for JSON bodies (via the serialization
+        // converter) and multipart/form-data; boundary=... for image uploads.
+        // Forcing application/json overwrote the multipart boundary, so the
+        // backend's FormFile("image") could not parse the body and every image
+        // upload failed with 400 "No image file provided".
         val builder = original.newBuilder()
-            .header("Content-Type", "application/json")
             .header("Cache-Control", "no-cache")
             .header("Pragma", "no-cache")
 
