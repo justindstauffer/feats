@@ -7,6 +7,7 @@ struct GroupSwitcherView: View {
     @State private var showCreateGroup = false
     @State private var showJoinGroup = false
     @State private var groupToInvite: Group?
+    @State private var groupToManage: Group?
 
     private var currentUserId: String? {
         authService.currentUser?.id
@@ -34,6 +35,9 @@ struct GroupSwitcherView: View {
                             },
                             onInvite: {
                                 groupToInvite = group
+                            },
+                            onManage: {
+                                groupToManage = group
                             }
                         )
                     }
@@ -72,6 +76,9 @@ struct GroupSwitcherView: View {
             .sheet(item: $groupToInvite) { group in
                 GroupInvitesView(group: group)
             }
+            .sheet(item: $groupToManage) { group in
+                GroupManagementView(group: group)
+            }
         }
     }
 }
@@ -82,6 +89,7 @@ struct GroupRow: View {
     let isAdmin: Bool
     let onSelect: () -> Void
     let onInvite: () -> Void
+    let onManage: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -135,10 +143,16 @@ struct GroupRow: View {
 
             Spacer()
 
-            // Invite button (for admins)
+            // Invite + manage buttons (for admins)
             if isAdmin {
                 Button(action: onInvite) {
                     Image(systemName: "person.badge.plus")
+                        .foregroundStyle(.blue)
+                }
+                .buttonStyle(.borderless)
+
+                Button(action: onManage) {
+                    Image(systemName: "gearshape")
                         .foregroundStyle(.blue)
                 }
                 .buttonStyle(.borderless)

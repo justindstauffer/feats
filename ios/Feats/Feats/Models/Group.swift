@@ -97,6 +97,15 @@ struct CreateGroupRequest: Codable {
     let description: String?
 }
 
+struct UpdateGroupRequest: Codable {
+    let name: String?
+    let description: String?
+}
+
+struct UpdateMemberRequest: Codable {
+    let role: String
+}
+
 struct RedeemInviteRequest: Codable {
     let code: String
 }
