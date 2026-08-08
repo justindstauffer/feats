@@ -53,6 +53,7 @@ import com.jstauff.feats.android.core.state.AppStateStore
 import com.jstauff.feats.android.core.state.GroupStateStore
 import com.jstauff.feats.android.core.util.formatRelativeTime
 import com.jstauff.feats.android.ui.components.FeatsTopAppBar
+import com.jstauff.feats.android.ui.components.FullScreenImageViewer
 import com.jstauff.feats.android.ui.components.PostImageGrid
 
 /** How close to the end of the list we get before requesting the next page. */
@@ -227,6 +228,7 @@ private fun PostCard(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var viewerIndex by remember { mutableStateOf<Int?>(null) }
 
     Card(
         modifier = Modifier
@@ -299,7 +301,8 @@ private fun PostCard(
             if (!post.images.isNullOrEmpty()) {
                 PostImageGrid(
                     images = post.images,
-                    modifier = Modifier.padding(top = 10.dp)
+                    modifier = Modifier.padding(top = 10.dp),
+                    onImageClick = { img -> viewerIndex = post.images.indexOf(img).coerceAtLeast(0) }
                 )
             }
 
@@ -327,6 +330,17 @@ private fun PostCard(
                 TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
             }
         )
+    }
+
+    val images = post.images
+    viewerIndex?.let { idx ->
+        if (!images.isNullOrEmpty()) {
+            FullScreenImageViewer(
+                images = images,
+                initialIndex = idx,
+                onDismiss = { viewerIndex = null }
+            )
+        }
     }
 }
 

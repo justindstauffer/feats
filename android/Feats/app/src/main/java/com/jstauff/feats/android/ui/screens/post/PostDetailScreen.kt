@@ -51,6 +51,7 @@ import com.jstauff.feats.android.core.network.dto.PostDto
 import com.jstauff.feats.android.core.state.AppStateStore
 import com.jstauff.feats.android.core.state.GroupStateStore
 import com.jstauff.feats.android.core.util.formatRelativeTime
+import com.jstauff.feats.android.ui.components.FullScreenImageViewer
 import com.jstauff.feats.android.ui.components.PostImageGrid
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -195,6 +196,7 @@ private fun PostDetailContent(
 
 @Composable
 private fun PostCard(post: PostDto) {
+    var viewerIndex by remember { mutableStateOf<Int?>(null) }
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -239,8 +241,23 @@ private fun PostCard(post: PostDto) {
                 )
             }
             if (!post.images.isNullOrEmpty()) {
-                PostImageGrid(images = post.images, modifier = Modifier.padding(top = 10.dp))
+                PostImageGrid(
+                    images = post.images,
+                    modifier = Modifier.padding(top = 10.dp),
+                    onImageClick = { img -> viewerIndex = post.images.indexOf(img).coerceAtLeast(0) }
+                )
             }
+        }
+    }
+
+    val images = post.images
+    viewerIndex?.let { idx ->
+        if (!images.isNullOrEmpty()) {
+            FullScreenImageViewer(
+                images = images,
+                initialIndex = idx,
+                onDismiss = { viewerIndex = null }
+            )
         }
     }
 }
