@@ -65,6 +65,20 @@ class PostDetailViewModelTest {
 
         var deleteResult: ApiResult<Unit> = ApiResult.Success(Unit)
         override suspend fun deletePost(groupId: String, postId: String) = deleteResult
+
+        override suspend fun editPost(groupId: String, postId: String, description: String?) =
+            ApiResult.Success(
+                PostDto(id = postId, userId = "author", activityTypeId = "a1",
+                    description = description, createdAt = "t", updatedAt = "t")
+            )
+        var editCommentResult: (String) -> ApiResult<CommentDto> = { content ->
+            ApiResult.Success(CommentDto(id = "c1", postId = "p1", userId = "user-me",
+                content = content, createdAt = "t", updatedAt = "t"))
+        }
+        override suspend fun editComment(groupId: String, commentId: String, content: String) =
+            editCommentResult(content)
+        var deleteCommentResult: ApiResult<Unit> = ApiResult.Success(Unit)
+        override suspend fun deleteComment(groupId: String, commentId: String) = deleteCommentResult
     }
 
     @Test

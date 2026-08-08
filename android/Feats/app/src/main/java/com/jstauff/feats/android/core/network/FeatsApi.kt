@@ -28,6 +28,8 @@ import com.jstauff.feats.android.core.network.dto.RefreshRequest
 import com.jstauff.feats.android.core.network.dto.RegisterRequest
 import com.jstauff.feats.android.core.network.dto.StreakDto
 import com.jstauff.feats.android.core.network.dto.TokenPair
+import com.jstauff.feats.android.core.network.dto.UpdateCommentRequest
+import com.jstauff.feats.android.core.network.dto.UpdatePostRequest
 import com.jstauff.feats.android.core.network.dto.UpdateUserRequest
 import com.jstauff.feats.android.core.network.dto.UserDto
 import retrofit2.http.Body
@@ -171,6 +173,13 @@ interface FeatsApi {
         @Path("postId") postId: String
     ): ApiResponse<Map<String, String>>
 
+    @PUT("groups/{groupId}/posts/{postId}")
+    suspend fun updatePost(
+        @Path("groupId") groupId: String,
+        @Path("postId") postId: String,
+        @Body request: UpdatePostRequest
+    ): ApiResponse<PostDto>
+
     @GET("groups/{groupId}/posts/{postId}/reactions")
     suspend fun reactions(
         @Path("groupId") groupId: String,
@@ -202,4 +211,17 @@ interface FeatsApi {
         @Path("postId") postId: String,
         @Body request: CreateCommentRequest
     ): ApiResponse<CommentDto>
+
+    @PUT("groups/{groupId}/comments/{commentId}")
+    suspend fun updateComment(
+        @Path("groupId") groupId: String,
+        @Path("commentId") commentId: String,
+        @Body request: UpdateCommentRequest
+    ): ApiResponse<CommentDto>
+
+    @DELETE("groups/{groupId}/comments/{commentId}")
+    suspend fun deleteComment(
+        @Path("groupId") groupId: String,
+        @Path("commentId") commentId: String
+    ): ApiResponse<Map<String, String>>
 }

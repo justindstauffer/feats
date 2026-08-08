@@ -12,11 +12,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -69,9 +74,10 @@ fun PostDetailScreen(
     val currentGroup = groupState.currentGroup
     val snackbarHostState = remember { SnackbarHostState() }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showEditDialog by remember { mutableStateOf(false) }
 
     // Own post or admin — backend enforces the same rule; this just gates the UI.
-    val canDelete = uiState.post?.let {
+    val canModify = uiState.post?.let {
         it.userId == authState.userId || authState.isAdmin
     } ?: false
 
@@ -99,7 +105,10 @@ fun PostDetailScreen(
                     }
                 },
                 actions = {
-                    if (canDelete) {
+                    if (canModify) {
+                        IconButton(onClick = { showEditDialog = true }) {
+                            Icon(Icons.Default.Edit, contentDescription = "Edit post")
+                        }
                         IconButton(onClick = { showDeleteDialog = true }) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete post")
                         }
@@ -128,8 +137,12 @@ fun PostDetailScreen(
                     reactionCounts = uiState.reactionCounts,
                     myReaction = uiState.myReaction,
                     isPostingComment = uiState.isPostingComment,
+                    currentUserId = authState.userId,
+                    isAdmin = authState.isAdmin,
                     onToggleReaction = viewModel::toggleReaction,
-                    onAddComment = { text, restore -> viewModel.addComment(text, restore) }
+                    onAddComment = { text, restore -> viewModel.addComment(text, restore) },
+                    onEditComment = { id, content, done -> viewModel.editComment(id, content, done) },
+                    onDeleteComment = viewModel::deleteComment
                 )
             }
         }
@@ -151,6 +164,31 @@ fun PostDetailScreen(
             }
         )
     }
+
+    if (showEditDialog) {
+        var editText by remember(uiState.post?.id) { mutableStateOf(uiState.post?.description.orEmpty()) }
+        AlertDialog(
+            onDismissRequest = { showEditDialog = false },
+            title = { Text("Edit post") },
+            text = {
+                OutlinedTextField(
+                    value = editText,
+                    onValueChange = { editText = it },
+                    label = { Text("Description") },
+                    minLines = 3,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.editPost(editText) { showEditDialog = false }
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
 }
 
 @Composable
@@ -160,8 +198,12 @@ private fun PostDetailContent(
     reactionCounts: Map<Int, Int>,
     myReaction: Int?,
     isPostingComment: Boolean,
+    currentUserId: String?,
+    isAdmin: Boolean,
     onToggleReaction: (Int) -> Unit,
-    onAddComment: (String, (String) -> Unit) -> Unit
+    onAddComment: (String, (String) -> Unit) -> Unit,
+    onEditComment: (String, String, () -> Unit) -> Unit,
+    onDeleteComment: (String) -> Unit
 ) {
     var commentInput by remember { mutableStateOf("") }
 
@@ -190,7 +232,14 @@ private fun PostDetailContent(
                 }
             )
         }
-        items(comments, key = { it.id }) { comment -> CommentCard(comment) }
+        items(comments, key = { it.id }) { comment ->
+            CommentCard(
+                comment = comment,
+                canManage = comment.userId == currentUserId || isAdmin,
+                onEdit = { content, done -> onEditComment(comment.id, content, done) },
+                onDelete = { onDeleteComment(comment.id) }
+            )
+        }
     }
 }
 
@@ -326,12 +375,40 @@ private fun CommentComposer(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun CommentCard(comment: CommentDto) {
+private fun CommentCard(
+    comment: CommentDto,
+    canManage: Boolean,
+    onEdit: (String, () -> Unit) -> Unit,
+    onDelete: () -> Unit
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    var showEditDialog by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
     Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = {},
+                onLongClick = { if (canManage) menuExpanded = true }
+            ),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
+        Box {
+            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                DropdownMenuItem(
+                    text = { Text("Edit") },
+                    onClick = { menuExpanded = false; showEditDialog = true }
+                )
+                DropdownMenuItem(
+                    text = { Text("Delete") },
+                    onClick = { menuExpanded = false; showDeleteDialog = true }
+                )
+            }
+        }
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
             Text(
                 text = comment.user?.name ?: "Unknown",
@@ -344,6 +421,43 @@ private fun CommentCard(comment: CommentDto) {
                 modifier = Modifier.padding(top = 2.dp)
             )
         }
+    }
+
+    if (showEditDialog) {
+        var editText by remember { mutableStateOf(comment.content) }
+        AlertDialog(
+            onDismissRequest = { showEditDialog = false },
+            title = { Text("Edit comment") },
+            text = {
+                OutlinedTextField(
+                    value = editText,
+                    onValueChange = { editText = it },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { onEdit(editText) { showEditDialog = false } },
+                    enabled = editText.isNotBlank()
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Delete comment?") },
+            confirmButton = {
+                TextButton(onClick = { showDeleteDialog = false; onDelete() }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
+            }
+        )
     }
 }
 

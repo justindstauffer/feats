@@ -143,6 +143,16 @@ data class CreatePostRequest(
 )
 
 @Serializable
+data class UpdatePostRequest(
+    val description: String? = null
+)
+
+@Serializable
+data class UpdateCommentRequest(
+    val content: String
+)
+
+@Serializable
 data class ChallengeParticipantDto(
     val id: String,
     @SerialName("challenge_id") val challengeId: String,

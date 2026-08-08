@@ -10,6 +10,8 @@ import com.jstauff.feats.android.core.network.dto.CommentDto
 import com.jstauff.feats.android.core.network.dto.CreateCommentRequest
 import com.jstauff.feats.android.core.network.dto.PostDto
 import com.jstauff.feats.android.core.network.dto.ReactionsPayloadDto
+import com.jstauff.feats.android.core.network.dto.UpdateCommentRequest
+import com.jstauff.feats.android.core.network.dto.UpdatePostRequest
 
 /** Post detail: fetch, reactions, comments. */
 interface PostRepository {
@@ -20,6 +22,9 @@ interface PostRepository {
     suspend fun removeReaction(groupId: String, postId: String): ApiResult<Unit>
     suspend fun addComment(groupId: String, postId: String, content: String): ApiResult<CommentDto>
     suspend fun deletePost(groupId: String, postId: String): ApiResult<Unit>
+    suspend fun editPost(groupId: String, postId: String, description: String?): ApiResult<PostDto>
+    suspend fun editComment(groupId: String, commentId: String, content: String): ApiResult<CommentDto>
+    suspend fun deleteComment(groupId: String, commentId: String): ApiResult<Unit>
 }
 
 class DefaultPostRepository(private val api: FeatsApi = ApiClient.api) : PostRepository {
@@ -44,6 +49,15 @@ class DefaultPostRepository(private val api: FeatsApi = ApiClient.api) : PostRep
 
     override suspend fun deletePost(groupId: String, postId: String): ApiResult<Unit> =
         apiCall { api.deletePost(groupId, postId) }.toUnit()
+
+    override suspend fun editPost(groupId: String, postId: String, description: String?): ApiResult<PostDto> =
+        apiCall { api.updatePost(groupId, postId, UpdatePostRequest(description = description)) }.unwrap()
+
+    override suspend fun editComment(groupId: String, commentId: String, content: String): ApiResult<CommentDto> =
+        apiCall { api.updateComment(groupId, commentId, UpdateCommentRequest(content = content)) }.unwrap()
+
+    override suspend fun deleteComment(groupId: String, commentId: String): ApiResult<Unit> =
+        apiCall { api.deleteComment(groupId, commentId) }.toUnit()
 }
 
 /** Unwraps the {data,error} envelope; a 2xx body with no data becomes a Failure. */

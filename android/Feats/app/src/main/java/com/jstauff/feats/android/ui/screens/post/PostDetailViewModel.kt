@@ -65,6 +65,55 @@ class PostDetailViewModel(private val repo: PostRepository) : ViewModel() {
 
     fun dismissActionError() = _state.update { it.copy(actionError = null) }
 
+    /** Edits the post description; updates state on success. */
+    fun editPost(description: String, onDone: () -> Unit) {
+        val gid = groupId ?: return
+        val pid = postId ?: return
+        viewModelScope.launch {
+            when (val result = repo.editPost(gid, pid, description.trim().ifBlank { null })) {
+                is ApiResult.Success -> {
+                    _state.update { it.copy(post = result.value) }
+                    AppStateStore.signalFeedRefresh()
+                    onDone()
+                }
+                is ApiResult.Failure -> _state.update { it.copy(actionError = result.message) }
+            }
+        }
+    }
+
+    /** Edits a comment's content; updates it in place on success. */
+    fun editComment(commentId: String, content: String, onDone: () -> Unit) {
+        val gid = groupId ?: return
+        val trimmed = content.trim()
+        if (trimmed.isEmpty()) return
+        viewModelScope.launch {
+            when (val result = repo.editComment(gid, commentId, trimmed)) {
+                is ApiResult.Success -> {
+                    _state.update { s ->
+                        s.copy(comments = s.comments.map { if (it.id == commentId) result.value else it })
+                    }
+                    onDone()
+                }
+                is ApiResult.Failure -> _state.update { it.copy(actionError = result.message) }
+            }
+        }
+    }
+
+    /** Deletes a comment, optimistically removing it; restores on failure. */
+    fun deleteComment(commentId: String) {
+        val gid = groupId ?: return
+        val previous = _state.value.comments
+        _state.update { it.copy(comments = it.comments.filterNot { c -> c.id == commentId }) }
+        viewModelScope.launch {
+            when (val result = repo.deleteComment(gid, commentId)) {
+                is ApiResult.Success -> Unit
+                is ApiResult.Failure -> _state.update {
+                    it.copy(comments = previous, actionError = result.message)
+                }
+            }
+        }
+    }
+
     /** Deletes the post; [onDeleted] navigates away on success. Backend enforces own-or-admin. */
     fun deletePost(onDeleted: () -> Unit) {
         val gid = groupId ?: return
