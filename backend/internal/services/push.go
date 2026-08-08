@@ -1,20 +1,21 @@
 package services
 
 import (
-	"bytes"
-	"encoding/json"
+	"context"
 	"fmt"
 	"log"
-	"net/http"
 	"strings"
 	"time"
 
+	firebase "firebase.google.com/go/v4"
+	"firebase.google.com/go/v4/messaging"
 	"github.com/google/uuid"
 	"github.com/jstauff/feats-api/internal/config"
 	"github.com/jstauff/feats-api/internal/models"
 	"github.com/sideshow/apns2"
 	"github.com/sideshow/apns2/payload"
 	"github.com/sideshow/apns2/token"
+	"google.golang.org/api/option"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -22,8 +23,7 @@ import (
 type PushService struct {
 	db          *gorm.DB
 	client      *apns2.Client
-	fcmClient   *http.Client
-	fcmServerKey string
+	fcmClient   *messaging.Client
 	bundleID    string
 	enabled     bool
 	apnsEnabled bool
@@ -39,12 +39,11 @@ type tokenColumnInfo struct {
 
 func NewPushService(db *gorm.DB, cfg *config.Config) *PushService {
 	service := &PushService{
-		db:           db,
-		bundleID:     cfg.APNsBundleID,
-		fcmServerKey: strings.TrimSpace(cfg.FCMServerKey),
-		enabled:      false,
-		apnsEnabled:  false,
-		fcmEnabled:   false,
+		db:          db,
+		bundleID:    cfg.APNsBundleID,
+		enabled:     false,
+		apnsEnabled: false,
+		fcmEnabled:  false,
 	}
 
 	// Initialize APNs when fully configured
@@ -74,13 +73,25 @@ func NewPushService(db *gorm.DB, cfg *config.Config) *PushService {
 		log.Println("APNs notifications disabled: APNs not fully configured")
 	}
 
-	// Initialize FCM when server key is provided
-	if service.fcmServerKey != "" {
-		service.fcmClient = &http.Client{Timeout: 10 * time.Second}
-		service.fcmEnabled = true
-		log.Println("FCM notifications enabled")
+	// Initialize FCM (HTTP v1) from a service-account credentials file. The
+	// project ID is read from the file, so no separate config is required.
+	if strings.TrimSpace(cfg.FCMCredentialsPath) != "" {
+		app, err := firebase.NewApp(
+			context.Background(),
+			nil,
+			option.WithCredentialsFile(cfg.FCMCredentialsPath),
+		)
+		if err != nil {
+			log.Printf("FCM disabled: failed to init Firebase app: %v", err)
+		} else if fcmClient, err := app.Messaging(context.Background()); err != nil {
+			log.Printf("FCM disabled: failed to init messaging client: %v", err)
+		} else {
+			service.fcmClient = fcmClient
+			service.fcmEnabled = true
+			log.Println("FCM notifications enabled")
+		}
 	} else {
-		log.Println("FCM notifications disabled: FCM_SERVER_KEY not configured")
+		log.Println("FCM notifications disabled: FCM_CREDENTIALS_PATH not configured")
 	}
 
 	service.enabled = service.apnsEnabled || service.fcmEnabled
@@ -255,60 +266,41 @@ func (s *PushService) sendIOS(deviceToken, title, body string, data map[string]i
 }
 
 func (s *PushService) sendAndroid(deviceToken, title, body string, data map[string]interface{}) {
-	if !s.fcmEnabled || s.fcmClient == nil || s.fcmServerKey == "" {
+	if !s.fcmEnabled || s.fcmClient == nil {
 		return
 	}
 
-	payload := map[string]interface{}{
-		"to": deviceToken,
-		"notification": map[string]interface{}{
-			"title": title,
-			"body":  body,
-			"sound": "default",
-		},
-		"data": data,
-	}
-
-	bodyBytes, err := json.Marshal(payload)
-	if err != nil {
-		log.Printf("FCM payload marshal error: %v", err)
-		return
-	}
-
-	req, err := http.NewRequest(http.MethodPost, "https://fcm.googleapis.com/fcm/send", bytes.NewReader(bodyBytes))
-	if err != nil {
-		log.Printf("FCM request build error: %v", err)
-		return
-	}
-	req.Header.Set("Authorization", "key="+s.fcmServerKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.fcmClient.Do(req)
-	if err != nil {
-		log.Printf("FCM push error: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Success int `json:"success"`
-		Failure int `json:"failure"`
-		Results []struct {
-			Error string `json:"error"`
-		} `json:"results"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		log.Printf("FCM decode error: %v", err)
-		return
-	}
-
-	if resp.StatusCode >= 400 || result.Failure > 0 {
-		reason := ""
-		if len(result.Results) > 0 {
-			reason = result.Results[0].Error
+	// FCM HTTP v1 requires the data payload to be map[string]string. All current
+	// callers pass strings, but convert defensively so a non-string value can't
+	// silently drop the notification.
+	stringData := make(map[string]string, len(data))
+	for k, v := range data {
+		if sv, ok := v.(string); ok {
+			stringData[k] = sv
+		} else {
+			stringData[k] = fmt.Sprintf("%v", v)
 		}
-		log.Printf("FCM push failed: status=%d reason=%s", resp.StatusCode, reason)
-		if reason == "NotRegistered" || reason == "InvalidRegistration" {
+	}
+
+	message := &messaging.Message{
+		Token: deviceToken,
+		Notification: &messaging.Notification{
+			Title: title,
+			Body:  body,
+		},
+		Data: stringData,
+		Android: &messaging.AndroidConfig{
+			Priority: "high",
+			Notification: &messaging.AndroidNotification{
+				Sound: "default",
+			},
+		},
+	}
+
+	if _, err := s.fcmClient.Send(context.Background(), message); err != nil {
+		log.Printf("FCM push failed: %v", err)
+		// Drop tokens the server reports as dead, mirroring the APNs path.
+		if messaging.IsUnregistered(err) || messaging.IsInvalidArgument(err) {
 			if colInfo, err := s.resolveTokenColumnInfo(); err == nil {
 				_ = s.db.Table("device_tokens").Where(colInfo.conflictColumn+" = ?", deviceToken).Delete(nil).Error
 			}

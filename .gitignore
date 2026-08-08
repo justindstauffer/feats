@@ -59,6 +59,14 @@ go.work.sum
 .env.local
 .env.*.local
 
+# Push credentials (private keys — never commit)
+# Firebase service-account JSON for FCM. google-services.json is NOT listed
+# here on purpose: it belongs to the Android app and is meant to be committed.
+*service-account*.json
+*-fcm-*.json
+backend/**/serviceAccountKey.json
+*.p8
+
 # Storage directories (uploaded images)
 # Keep this anchored to backend/. An unanchored "storage/" also matched the
 # Android source package core/storage/, which silently kept SecureTokenStore.kt

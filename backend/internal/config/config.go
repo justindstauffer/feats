@@ -69,7 +69,9 @@ type Config struct {
 	APNsTeamID     string
 	APNsBundleID   string
 	APNsProduction bool
-	FCMServerKey   string
+	// Path to a Firebase service-account JSON. The FCM HTTP v1 client reads the
+	// project ID from this file, so no separate project-ID var is needed.
+	FCMCredentialsPath string
 
 	// General
 	Timezone string
@@ -113,8 +115,8 @@ func Load() (*Config, error) {
 		APNsKeyID:      getEnv("APNS_KEY_ID", ""),
 		APNsTeamID:     getEnv("APNS_TEAM_ID", ""),
 		APNsBundleID:   getEnv("APNS_BUNDLE_ID", ""),
-		APNsProduction: getEnv("APNS_PRODUCTION", "false") == "true",
-		FCMServerKey:   getEnv("FCM_SERVER_KEY", ""),
+		APNsProduction:     getEnv("APNS_PRODUCTION", "false") == "true",
+		FCMCredentialsPath: getEnv("FCM_CREDENTIALS_PATH", ""),
 
 		// General
 		Timezone: getEnv("TIMEZONE", "UTC"),
