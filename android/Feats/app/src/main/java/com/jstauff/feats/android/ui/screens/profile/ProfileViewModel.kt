@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.jstauff.feats.android.core.data.DefaultProfileRepository
 import com.jstauff.feats.android.core.data.ProfileRepository
 import com.jstauff.feats.android.core.network.ApiResult
+import com.jstauff.feats.android.core.network.dto.ActivityTypeDto
 import com.jstauff.feats.android.core.network.dto.BetaInviteDto
 import com.jstauff.feats.android.core.network.dto.GoalDto
 import com.jstauff.feats.android.core.network.dto.StreakDto
@@ -19,6 +20,7 @@ data class ProfileUiState(
     val user: UserDto? = null,
     val streak: StreakDto? = null,
     val goals: List<GoalDto> = emptyList(),
+    val activities: List<ActivityTypeDto> = emptyList(),
     val betaInvites: List<BetaInviteDto> = emptyList(),
     val isLoading: Boolean = false,
     val isSaving: Boolean = false,
@@ -136,16 +138,58 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
             val streak = if (userId.isNotBlank()) repo.streak(gid, userId) else null
             val goals = if (userId.isNotBlank()) repo.goals(gid, userId) else null
             val invites = if (me.role.equals("admin", ignoreCase = true)) repo.betaInvites() else null
+            val activities = repo.activities(gid)
 
             _state.update { current ->
                 current.copy(
                     user = me,
                     streak = (streak as? ApiResult.Success)?.value,
                     goals = (goals as? ApiResult.Success)?.value ?: current.goals,
+                    activities = (activities as? ApiResult.Success)?.value ?: current.activities,
                     betaInvites = (invites as? ApiResult.Success)?.value ?: emptyList(),
                     isLoading = false,
                     error = null
                 )
+            }
+        }
+    }
+
+    fun createGoal(activityId: String?, targetCount: Int, period: String, onDone: () -> Unit) {
+        val gid = groupId ?: return
+        _state.update { it.copy(isSaving = true) }
+        viewModelScope.launch {
+            when (val r = repo.createGoal(gid, activityId, targetCount.coerceAtLeast(1), period)) {
+                is ApiResult.Success -> {
+                    _state.update { it.copy(isSaving = false, goals = it.goals + r.value) }
+                    onDone()
+                }
+                is ApiResult.Failure -> _state.update { it.copy(isSaving = false, actionError = r.message) }
+            }
+        }
+    }
+
+    fun updateGoal(goalId: String, targetCount: Int?, period: String?, onDone: () -> Unit) {
+        val gid = groupId ?: return
+        _state.update { it.copy(isSaving = true) }
+        viewModelScope.launch {
+            when (val r = repo.updateGoal(gid, goalId, targetCount, period)) {
+                is ApiResult.Success -> {
+                    _state.update { s -> s.copy(isSaving = false, goals = s.goals.map { if (it.id == goalId) r.value else it }) }
+                    onDone()
+                }
+                is ApiResult.Failure -> _state.update { it.copy(isSaving = false, actionError = r.message) }
+            }
+        }
+    }
+
+    fun deleteGoal(goalId: String) {
+        val gid = groupId ?: return
+        val previous = _state.value.goals
+        _state.update { it.copy(goals = it.goals.filterNot { g -> g.id == goalId }) }
+        viewModelScope.launch {
+            when (val r = repo.deleteGoal(gid, goalId)) {
+                is ApiResult.Success -> Unit
+                is ApiResult.Failure -> _state.update { it.copy(goals = previous, actionError = r.message) }
             }
         }
     }

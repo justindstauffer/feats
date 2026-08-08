@@ -10,8 +10,10 @@ import com.jstauff.feats.android.core.network.dto.CommentDto
 import com.jstauff.feats.android.core.network.dto.CreateChallengeRequest
 import com.jstauff.feats.android.core.network.dto.CreateBetaInviteRequest
 import com.jstauff.feats.android.core.network.dto.CreateCommentRequest
+import com.jstauff.feats.android.core.network.dto.CreateGoalRequest
 import com.jstauff.feats.android.core.network.dto.CreateGroupRequest
 import com.jstauff.feats.android.core.network.dto.CreatePostRequest
+import com.jstauff.feats.android.core.network.dto.UpdateGoalRequest
 import com.jstauff.feats.android.core.network.dto.GoalDto
 import com.jstauff.feats.android.core.network.dto.CreateGroupInviteRequest
 import com.jstauff.feats.android.core.network.dto.GroupDto
@@ -127,6 +129,25 @@ interface FeatsApi {
         @Path("groupId") groupId: String,
         @Path("userId") userId: String
     ): ApiResponse<List<GoalDto>>
+
+    @POST("groups/{groupId}/goals")
+    suspend fun createGoal(
+        @Path("groupId") groupId: String,
+        @Body request: CreateGoalRequest
+    ): ApiResponse<GoalDto>
+
+    @PUT("groups/{groupId}/goals/{goalId}")
+    suspend fun updateGoal(
+        @Path("groupId") groupId: String,
+        @Path("goalId") goalId: String,
+        @Body request: UpdateGoalRequest
+    ): ApiResponse<GoalDto>
+
+    @DELETE("groups/{groupId}/goals/{goalId}")
+    suspend fun deleteGoal(
+        @Path("groupId") groupId: String,
+        @Path("goalId") goalId: String
+    ): ApiResponse<Map<String, String>>
 
     @GET("groups/{groupId}/challenges")
     suspend fun challenges(

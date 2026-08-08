@@ -4,8 +4,11 @@ import com.jstauff.feats.android.core.network.ApiClient
 import com.jstauff.feats.android.core.network.ApiResult
 import com.jstauff.feats.android.core.network.FeatsApi
 import com.jstauff.feats.android.core.network.apiCall
+import com.jstauff.feats.android.core.network.dto.ActivityTypeDto
 import com.jstauff.feats.android.core.network.dto.ApiResponse
 import com.jstauff.feats.android.core.network.dto.BetaInviteDto
+import com.jstauff.feats.android.core.network.dto.CreateGoalRequest
+import com.jstauff.feats.android.core.network.dto.UpdateGoalRequest
 import com.jstauff.feats.android.core.network.dto.ChangePasswordRequest
 import com.jstauff.feats.android.core.network.dto.CreateBetaInviteRequest
 import com.jstauff.feats.android.core.network.dto.GoalDto
@@ -22,6 +25,10 @@ interface ProfileRepository {
     suspend fun betaInvites(): ApiResult<List<BetaInviteDto>>
     suspend fun createBetaInvite(maxUses: Int, expiresInHours: Int, note: String?): ApiResult<BetaInviteDto>
     suspend fun deleteBetaInvite(inviteId: String): ApiResult<Unit>
+    suspend fun activities(groupId: String): ApiResult<List<ActivityTypeDto>>
+    suspend fun createGoal(groupId: String, activityTypeId: String?, targetCount: Int, period: String): ApiResult<GoalDto>
+    suspend fun updateGoal(groupId: String, goalId: String, targetCount: Int?, period: String?): ApiResult<GoalDto>
+    suspend fun deleteGoal(groupId: String, goalId: String): ApiResult<Unit>
 }
 
 class DefaultProfileRepository(private val api: FeatsApi = ApiClient.api) : ProfileRepository {
@@ -58,6 +65,33 @@ class DefaultProfileRepository(private val api: FeatsApi = ApiClient.api) : Prof
 
     override suspend fun deleteBetaInvite(inviteId: String): ApiResult<Unit> =
         apiCall { api.deleteBetaInvite(inviteId) }.toUnit()
+
+    override suspend fun activities(groupId: String): ApiResult<List<ActivityTypeDto>> =
+        when (val r = apiCall { api.activities(groupId) }) {
+            is ApiResult.Failure -> r
+            is ApiResult.Success -> ApiResult.Success(r.value.data.orEmpty())
+        }
+
+    override suspend fun createGoal(
+        groupId: String,
+        activityTypeId: String?,
+        targetCount: Int,
+        period: String
+    ): ApiResult<GoalDto> =
+        apiCall {
+            api.createGoal(groupId, CreateGoalRequest(activityTypeId, targetCount, period))
+        }.unwrap()
+
+    override suspend fun updateGoal(
+        groupId: String,
+        goalId: String,
+        targetCount: Int?,
+        period: String?
+    ): ApiResult<GoalDto> =
+        apiCall { api.updateGoal(groupId, goalId, UpdateGoalRequest(targetCount, period)) }.unwrap()
+
+    override suspend fun deleteGoal(groupId: String, goalId: String): ApiResult<Unit> =
+        apiCall { api.deleteGoal(groupId, goalId) }.toUnit()
 }
 
 private fun <T> ApiResult<ApiResponse<T>>.unwrap(): ApiResult<T> = when (this) {

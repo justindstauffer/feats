@@ -207,6 +207,19 @@ data class GoalDto(
 )
 
 @Serializable
+data class CreateGoalRequest(
+    @SerialName("activity_type_id") val activityTypeId: String? = null,
+    @SerialName("target_count") val targetCount: Int,
+    val period: String
+)
+
+@Serializable
+data class UpdateGoalRequest(
+    @SerialName("target_count") val targetCount: Int? = null,
+    val period: String? = null
+)
+
+@Serializable
 data class CreateChallengeRequest(
     val title: String,
     val description: String? = null,

@@ -67,6 +67,7 @@ fun ProfileScreen(
     var showInvitesSheet by remember { mutableStateOf(false) }
     var showGroupInvitesSheet by remember { mutableStateOf(false) }
     var showLeaveDialog by remember { mutableStateOf(false) }
+    var goalSheet by remember { mutableStateOf<GoalSheetTarget?>(null) }
 
     // Group admin = the group's creator or a global admin. Backend enforces the
     // real rule; this only decides whether to show the invite controls.
@@ -116,7 +117,14 @@ fun ProfileScreen(
                         item { EditProfileCard(user.name, user.bio.orEmpty(), uiState.isSaving, viewModel) }
                     }
                     item { StreakCard(uiState.streak?.currentStreak, uiState.streak?.longestStreak) }
-                    item { GoalsCard(uiState.goals) }
+                    item {
+                        GoalsCard(
+                            goals = uiState.goals,
+                            onAddGoal = { goalSheet = GoalSheetTarget.New },
+                            onEditGoal = { goalSheet = GoalSheetTarget.Existing(it) },
+                            onDeleteGoal = viewModel::deleteGoal
+                        )
+                    }
 
                     item {
                         OutlinedButton(
@@ -216,6 +224,105 @@ fun ProfileScreen(
                 TextButton(onClick = { showLeaveDialog = false }) { Text("Cancel") }
             }
         )
+    }
+
+    goalSheet?.let { target ->
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(onDismissRequest = { goalSheet = null }, sheetState = sheetState) {
+            GoalForm(
+                target = target,
+                activities = uiState.activities,
+                isSaving = uiState.isSaving,
+                onSubmit = { activityId, targetCount, period ->
+                    when (target) {
+                        is GoalSheetTarget.New ->
+                            viewModel.createGoal(activityId, targetCount, period) { goalSheet = null }
+                        is GoalSheetTarget.Existing ->
+                            viewModel.updateGoal(target.goal.id, targetCount, period) { goalSheet = null }
+                    }
+                }
+            )
+        }
+    }
+}
+
+private sealed interface GoalSheetTarget {
+    data object New : GoalSheetTarget
+    data class Existing(val goal: com.jstauff.feats.android.core.network.dto.GoalDto) : GoalSheetTarget
+}
+
+private val GOAL_PERIODS = listOf("daily", "weekly", "monthly")
+
+@Composable
+private fun GoalForm(
+    target: GoalSheetTarget,
+    activities: List<com.jstauff.feats.android.core.network.dto.ActivityTypeDto>,
+    isSaving: Boolean,
+    onSubmit: (activityId: String?, targetCount: Int, period: String) -> Unit
+) {
+    val existing = (target as? GoalSheetTarget.Existing)?.goal
+    var activityId by remember { mutableStateOf(existing?.activityTypeId) }
+    var count by remember { mutableStateOf(existing?.targetCount ?: 5) }
+    var period by remember { mutableStateOf(existing?.period ?: "daily") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 20.dp, end = 20.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            if (existing == null) "New goal" else "Edit goal",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
+
+        // Activity is only settable at creation (backend update takes target/period).
+        if (existing == null) {
+            Text("Activity", style = MaterialTheme.typography.bodyLarge)
+            androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item {
+                    androidx.compose.material3.FilterChip(
+                        selected = activityId == null,
+                        onClick = { activityId = null },
+                        label = { Text("Any") }
+                    )
+                }
+                items(activities.size) { i ->
+                    val a = activities[i]
+                    androidx.compose.material3.FilterChip(
+                        selected = activityId == a.id,
+                        onClick = { activityId = a.id },
+                        label = { Text("${a.icon ?: ""} ${a.name}") }
+                    )
+                }
+            }
+        }
+
+        Text("Period", style = MaterialTheme.typography.bodyLarge)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            GOAL_PERIODS.forEach { p ->
+                androidx.compose.material3.FilterChip(
+                    selected = period == p,
+                    onClick = { period = p },
+                    label = { Text(p.replaceFirstChar { it.uppercase() }) }
+                )
+            }
+        }
+
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Target", style = MaterialTheme.typography.bodyLarge)
+            OutlinedButton(onClick = { count = (count - 1).coerceAtLeast(1) }, enabled = !isSaving) { Text("−") }
+            Text("$count", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            OutlinedButton(onClick = { count = (count + 1).coerceAtMost(1000) }, enabled = !isSaving) { Text("+") }
+        }
+
+        Button(
+            onClick = { onSubmit(activityId, count, period) },
+            enabled = !isSaving,
+            modifier = Modifier.fillMaxWidth()
+        ) { Text(if (existing == null) "Create goal" else "Save") }
     }
 }
 
@@ -371,26 +478,42 @@ private fun StreakCard(current: Int?, longest: Int?) {
 }
 
 @Composable
-private fun GoalsCard(goals: List<GoalDto>) {
+private fun GoalsCard(
+    goals: List<GoalDto>,
+    onAddGoal: () -> Unit,
+    onEditGoal: (GoalDto) -> Unit,
+    onDeleteGoal: (String) -> Unit
+) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Goals", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                Text("Goals", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                TextButton(onClick = onAddGoal) { Text("Add") }
+            }
             if (goals.isEmpty()) {
                 Text("No goals set", color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 goals.forEach { goal ->
                     val label = goal.activityType?.let { "${it.icon ?: ""} ${it.name}" } ?: "Any activity"
                     val period = goal.period.replaceFirstChar { it.titlecase() }
-                    Column {
-                        Text(label, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            "$period • ${goal.currentProgress}/${goal.targetCount}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(label, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "$period • ${goal.currentProgress}/${goal.targetCount}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        TextButton(onClick = { onEditGoal(goal) }) { Text("Edit") }
+                        TextButton(onClick = { onDeleteGoal(goal.id) }) { Text("Delete") }
                     }
                 }
             }
