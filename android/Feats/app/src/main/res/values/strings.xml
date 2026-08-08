@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Feats</string>
+    <!-- Must match NotificationChannels.DEFAULT_ID -->
+    <string name="default_notification_channel_id" translatable="false">feats_notifications</string>
 </resources>

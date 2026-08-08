@@ -1,0 +1,4 @@
+<resources>
+    <!-- Tint applied to the notification small icon. Matches FeatsBlue. -->
+    <color name="notification_color">#2F80ED</color>
+</resources>
