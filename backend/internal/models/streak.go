@@ -22,17 +22,39 @@ func (Streak) TableName() string {
 	return "streaks"
 }
 
-// UpdateForNewActivity updates the streak based on a new activity
-func (s *Streak) UpdateForNewActivity(activityDate time.Time, timezone *time.Location) {
-	today := time.Now().In(timezone).Truncate(24 * time.Hour)
-	activityDay := activityDate.In(timezone).Truncate(24 * time.Hour)
+// calendarDay returns t's calendar date in tz, encoded as midnight UTC. Encoding
+// as UTC midnight (rather than local midnight) keeps day arithmetic DST-safe and
+// round-trips cleanly through the DATE column. NOTE: do not use
+// time.Truncate(24*time.Hour) for this — Truncate operates on the absolute
+// instant and always snaps to UTC midnight regardless of Location, which made
+// "calendar day" mean the UTC day instead of the user's local day.
+func calendarDay(t time.Time, tz *time.Location) time.Time {
+	y, m, d := t.In(tz).Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+}
 
-	// If activity is in the future, ignore
+// storedDay normalizes a persisted LastActivityDate (already stored as UTC
+// midnight of a calendar date) back to UTC midnight for comparison.
+func storedDay(t time.Time) time.Time {
+	y, m, d := t.UTC().Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+}
+
+// UpdateForNewActivity updates the streak based on a new activity.
+func (s *Streak) UpdateForNewActivity(activityDate time.Time, timezone *time.Location) {
+	s.updateForNewActivity(activityDate, time.Now(), timezone)
+}
+
+func (s *Streak) updateForNewActivity(activityDate, now time.Time, tz *time.Location) {
+	today := calendarDay(now, tz)
+	activityDay := calendarDay(activityDate, tz)
+
+	// Ignore activity dated in the future.
 	if activityDay.After(today) {
 		return
 	}
 
-	// First activity ever
+	// First activity ever.
 	if s.LastActivityDate == nil {
 		s.CurrentStreak = 1
 		s.LongestStreak = 1
@@ -40,41 +62,43 @@ func (s *Streak) UpdateForNewActivity(activityDate time.Time, timezone *time.Loc
 		return
 	}
 
-	lastDay := s.LastActivityDate.In(timezone).Truncate(24 * time.Hour)
+	lastDay := storedDay(*s.LastActivityDate)
 
-	// Same day - no change to streak
-	if activityDay.Equal(lastDay) {
+	switch {
+	case activityDay.Equal(lastDay):
+		// Same calendar day — already counted, no change.
 		return
-	}
-
-	// Consecutive day - increment streak
-	if activityDay.Equal(lastDay.Add(24 * time.Hour)) {
+	case activityDay.Equal(lastDay.AddDate(0, 0, 1)):
+		// Next calendar day — extend the streak.
 		s.CurrentStreak++
 		if s.CurrentStreak > s.LongestStreak {
 			s.LongestStreak = s.CurrentStreak
 		}
 		s.LastActivityDate = &activityDay
-		return
-	}
-
-	// Gap in days - reset streak
-	if activityDay.After(lastDay) {
+	case activityDay.After(lastDay):
+		// Missed at least one full day — streak restarts at 1.
 		s.CurrentStreak = 1
 		s.LastActivityDate = &activityDay
 	}
+	// activityDay before lastDay (backdated) — leave the streak untouched.
 }
 
-// CheckAndResetIfNeeded checks if streak should be reset due to missed day
+// CheckAndResetIfNeeded resets the streak to 0 when the last activity was before
+// yesterday (a full calendar day was missed). Returns true if it changed.
 func (s *Streak) CheckAndResetIfNeeded(timezone *time.Location) bool {
+	return s.checkAndResetIfNeeded(time.Now(), timezone)
+}
+
+func (s *Streak) checkAndResetIfNeeded(now time.Time, tz *time.Location) bool {
 	if s.LastActivityDate == nil {
 		return false
 	}
 
-	today := time.Now().In(timezone).Truncate(24 * time.Hour)
-	lastDay := s.LastActivityDate.In(timezone).Truncate(24 * time.Hour)
-	yesterday := today.Add(-24 * time.Hour)
+	today := calendarDay(now, tz)
+	lastDay := storedDay(*s.LastActivityDate)
+	yesterday := today.AddDate(0, 0, -1)
 
-	// If last activity was before yesterday, streak is broken
+	// Last activity older than yesterday → the streak is broken.
 	if lastDay.Before(yesterday) {
 		s.CurrentStreak = 0
 		return true
