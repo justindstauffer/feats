@@ -20,6 +20,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -66,6 +67,7 @@ fun ProfileScreen(
     var showPasswordSheet by remember { mutableStateOf(false) }
     var showInvitesSheet by remember { mutableStateOf(false) }
     var showGroupInvitesSheet by remember { mutableStateOf(false) }
+    var showManageGroupSheet by remember { mutableStateOf(false) }
     var showLeaveDialog by remember { mutableStateOf(false) }
     var goalSheet by remember { mutableStateOf<GoalSheetTarget?>(null) }
 
@@ -141,6 +143,15 @@ fun ProfileScreen(
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) { Text("Invite people to ${currentGroup?.name ?: "group"}") }
+                        }
+                        item {
+                            OutlinedButton(
+                                onClick = {
+                                    currentGroup?.id?.let(groupViewModel::loadMembers)
+                                    showManageGroupSheet = true
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Manage group") }
                         }
                     }
                     item {
@@ -243,6 +254,125 @@ fun ProfileScreen(
                 }
             )
         }
+    }
+
+    if (showManageGroupSheet && currentGroup != null) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(onDismissRequest = { showManageGroupSheet = false }, sheetState = sheetState) {
+            GroupManageForm(
+                groupName = currentGroup.name,
+                members = groupUiState.members,
+                currentUserId = authState.userId,
+                isLoading = groupUiState.isLoading,
+                isSaving = groupUiState.isSubmitting,
+                onRename = { name -> groupViewModel.renameGroup(name) {} },
+                onSetRole = groupViewModel::setMemberRole,
+                onRemoveMember = groupViewModel::removeMember,
+                onDeleteGroup = { groupViewModel.deleteGroup { showManageGroupSheet = false } }
+            )
+        }
+    }
+}
+
+@Composable
+private fun GroupManageForm(
+    groupName: String,
+    members: List<com.jstauff.feats.android.core.network.dto.GroupMemberDto>,
+    currentUserId: String?,
+    isLoading: Boolean,
+    isSaving: Boolean,
+    onRename: (String) -> Unit,
+    onSetRole: (String, String) -> Unit,
+    onRemoveMember: (String) -> Unit,
+    onDeleteGroup: () -> Unit
+) {
+    var name by remember { mutableStateOf(groupName) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 20.dp, end = 20.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text("Manage group", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("Group name") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isSaving
+        )
+        Button(
+            onClick = { onRename(name) },
+            enabled = !isSaving && name.isNotBlank() && name != groupName,
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Rename group") }
+
+        Text("Members", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        if (isLoading) {
+            CircularProgressIndicator()
+        } else {
+            members.forEach { member ->
+                val isSelf = member.userId == currentUserId
+                val isAdmin = member.role.equals("admin", ignoreCase = true)
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                member.user?.name ?: "Unknown",
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                if (isAdmin) "Admin" else "Member",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (!isSelf) {
+                            TextButton(
+                                onClick = { onSetRole(member.userId, if (isAdmin) "member" else "admin") },
+                                enabled = !isSaving
+                            ) { Text(if (isAdmin) "Make member" else "Make admin") }
+                            TextButton(
+                                onClick = { onRemoveMember(member.userId) },
+                                enabled = !isSaving
+                            ) { Text("Remove") }
+                        }
+                    }
+                }
+            }
+        }
+
+        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+        OutlinedButton(
+            onClick = { showDeleteConfirm = true },
+            enabled = !isSaving,
+            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                contentColor = MaterialTheme.colorScheme.error
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Delete group") }
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete $groupName?") },
+            text = { Text("This permanently deletes the group and all its posts for everyone. This can't be undone.") },
+            confirmButton = {
+                TextButton(onClick = { showDeleteConfirm = false; onDeleteGroup() }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
+            }
+        )
     }
 }
 

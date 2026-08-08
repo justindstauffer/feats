@@ -137,6 +137,26 @@ data class CreateGroupInviteRequest(
 )
 
 @Serializable
+data class GroupMemberDto(
+    val id: String,
+    @SerialName("group_id") val groupId: String,
+    @SerialName("user_id") val userId: String,
+    val role: String,
+    val user: UserDto? = null
+)
+
+@Serializable
+data class UpdateMemberRequest(
+    val role: String
+)
+
+@Serializable
+data class UpdateGroupRequest(
+    val name: String? = null,
+    val description: String? = null
+)
+
+@Serializable
 data class CreatePostRequest(
     @SerialName("activity_type_id") val activityTypeId: String,
     val description: String? = null

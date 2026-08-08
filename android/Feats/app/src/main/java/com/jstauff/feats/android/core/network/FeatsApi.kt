@@ -18,7 +18,10 @@ import com.jstauff.feats.android.core.network.dto.GoalDto
 import com.jstauff.feats.android.core.network.dto.CreateGroupInviteRequest
 import com.jstauff.feats.android.core.network.dto.GroupDto
 import com.jstauff.feats.android.core.network.dto.GroupInviteDto
+import com.jstauff.feats.android.core.network.dto.GroupMemberDto
 import com.jstauff.feats.android.core.network.dto.LoginPayload
+import com.jstauff.feats.android.core.network.dto.UpdateGroupRequest
+import com.jstauff.feats.android.core.network.dto.UpdateMemberRequest
 import com.jstauff.feats.android.core.network.dto.LoginRequest
 import com.jstauff.feats.android.core.network.dto.PaginatedResponse
 import com.jstauff.feats.android.core.network.dto.PostDto
@@ -93,6 +96,31 @@ interface FeatsApi {
     suspend fun revokeGroupInvite(
         @Path("groupId") groupId: String,
         @Path("inviteId") inviteId: String
+    ): ApiResponse<Map<String, String>>
+
+    @GET("groups/{groupId}/members")
+    suspend fun groupMembers(@Path("groupId") groupId: String): ApiResponse<List<GroupMemberDto>>
+
+    @PUT("groups/{groupId}")
+    suspend fun updateGroup(
+        @Path("groupId") groupId: String,
+        @Body request: UpdateGroupRequest
+    ): ApiResponse<GroupDto>
+
+    @DELETE("groups/{groupId}")
+    suspend fun deleteGroup(@Path("groupId") groupId: String): ApiResponse<Map<String, String>>
+
+    @PUT("groups/{groupId}/members/{userId}")
+    suspend fun updateMember(
+        @Path("groupId") groupId: String,
+        @Path("userId") userId: String,
+        @Body request: UpdateMemberRequest
+    ): ApiResponse<Map<String, String>>
+
+    @DELETE("groups/{groupId}/members/{userId}")
+    suspend fun removeMember(
+        @Path("groupId") groupId: String,
+        @Path("userId") userId: String
     ): ApiResponse<Map<String, String>>
 
     @GET("groups/{groupId}/activities")
