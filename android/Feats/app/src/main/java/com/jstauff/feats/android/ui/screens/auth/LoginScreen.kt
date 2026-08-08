@@ -23,7 +23,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import com.jstauff.feats.android.core.network.SessionManager
 import com.jstauff.feats.android.core.state.GroupStateStore
@@ -32,10 +39,30 @@ import kotlinx.coroutines.launch
 @Composable
 fun LoginScreen(onLoginSuccess: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+
+    fun submit() {
+        if (isLoading || email.isBlank() || password.isBlank()) return
+        keyboard?.hide()
+        isLoading = true
+        error = null
+        scope.launch {
+            try {
+                SessionManager.login(email.trim(), password)
+                GroupStateStore.loadGroups()
+                onLoginSuccess()
+            } catch (e: Exception) {
+                error = e.message ?: "Login failed"
+            } finally {
+                isLoading = false
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -63,7 +90,15 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                     value = email,
                     onValueChange = { email = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Email") }
+                    label = { Text("Email") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Email,
+                        imeAction = ImeAction.Next
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                    )
                 )
 
                 OutlinedTextField(
@@ -73,7 +108,13 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                         .fillMaxWidth()
                         .padding(top = 12.dp),
                     label = { Text("Password") },
-                    visualTransformation = PasswordVisualTransformation()
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Password,
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { submit() })
                 )
 
                 error?.let {
@@ -88,23 +129,8 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                 Spacer(modifier = Modifier.padding(top = 4.dp))
 
                 Button(
-                    onClick = {
-                        if (isLoading) return@Button
-                        isLoading = true
-                        error = null
-
-                        scope.launch {
-                            try {
-                                SessionManager.login(email.trim(), password)
-                                GroupStateStore.loadGroups()
-                                onLoginSuccess()
-                            } catch (e: Exception) {
-                                error = e.message ?: "Login failed"
-                            } finally {
-                                isLoading = false
-                            }
-                        }
-                    },
+                    onClick = { submit() },
+                    enabled = !isLoading && email.isNotBlank() && password.isNotBlank(),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 10.dp)

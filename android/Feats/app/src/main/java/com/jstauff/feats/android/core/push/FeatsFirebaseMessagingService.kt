@@ -1,16 +1,17 @@
 package com.jstauff.feats.android.core.push
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
+import android.Manifest
 import android.app.PendingIntent
-import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.jstauff.feats.android.MainActivity
+import com.jstauff.feats.android.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -35,7 +36,22 @@ class FeatsFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     private fun showNotification(title: String, body: String, data: Map<String, String>) {
-        ensureChannel()
+        // On Android 13+ posting without POST_NOTIFICATIONS is a silent no-op, so
+        // bail rather than building a notification that goes nowhere. Kept inline
+        // instead of extracted into a helper: lint's MissingPermission dataflow
+        // only recognises the check within the method that calls notify().
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+
+        // Normally created at app startup; ensure it exists in case the process
+        // was started directly for this message.
+        NotificationChannels.ensureCreated(this)
 
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -51,8 +67,9 @@ class FeatsFirebaseMessagingService : FirebaseMessagingService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+        val notification = NotificationCompat.Builder(this, NotificationChannels.DEFAULT_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(ContextCompat.getColor(this, R.color.notification_color))
             .setContentTitle(title)
             .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -63,24 +80,5 @@ class FeatsFirebaseMessagingService : FirebaseMessagingService() {
         runCatching {
             NotificationManagerCompat.from(this).notify(Random.nextInt(), notification)
         }
-    }
-
-    private fun ensureChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            "Feats Notifications",
-            NotificationManager.IMPORTANCE_HIGH
-        ).apply {
-            description = "Notifications for posts, comments, and reactions"
-        }
-
-        manager.createNotificationChannel(channel)
-    }
-
-    companion object {
-        private const val CHANNEL_ID = "feats_notifications"
     }
 }

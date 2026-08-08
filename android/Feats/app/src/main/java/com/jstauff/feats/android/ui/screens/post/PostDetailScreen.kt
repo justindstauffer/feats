@@ -1,425 +1,306 @@
 package com.jstauff.feats.android.ui.screens.post
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
-import androidx.compose.material3.Button
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.background
-import com.jstauff.feats.android.core.network.ApiClient
-import com.jstauff.feats.android.core.network.dto.AddReactionRequest
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jstauff.feats.android.core.network.dto.CommentDto
-import com.jstauff.feats.android.core.network.dto.CreateCommentRequest
 import com.jstauff.feats.android.core.network.dto.PostDto
-import com.jstauff.feats.android.core.network.dto.PostImageDto
-import com.jstauff.feats.android.core.network.dto.ReactionSummaryDto
 import com.jstauff.feats.android.core.state.AppStateStore
 import com.jstauff.feats.android.core.state.GroupStateStore
-import com.jstauff.feats.android.ui.components.AuthenticatedImage
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import com.jstauff.feats.android.core.util.formatRelativeTime
+import com.jstauff.feats.android.ui.components.PostImageGrid
 
-private class PostDetailViewModel {
-    var post by mutableStateOf<PostDto?>(null)
-    val comments = mutableStateListOf<CommentDto>()
-    val reactionSummary = mutableStateListOf<ReactionSummaryDto>()
-    var isLoading by mutableStateOf(false)
-    var isSubmitting by mutableStateOf(false)
-    var error by mutableStateOf<String?>(null)
-
-    suspend fun load(groupId: String, postId: String) {
-        isLoading = true
-        error = null
-        try {
-            val postResponse = withContext(Dispatchers.IO) {
-                ApiClient.api.groupPostById(groupId = groupId, postId = postId)
-            }
-            post = postResponse.data
-
-            val reactionsResponse = withContext(Dispatchers.IO) {
-                ApiClient.api.reactions(groupId = groupId, postId = postId)
-            }
-            reactionSummary.clear()
-            reactionSummary.addAll(reactionsResponse.data?.summary ?: emptyList())
-
-            val commentsResponse = withContext(Dispatchers.IO) {
-                ApiClient.api.comments(groupId = groupId, postId = postId)
-            }
-            comments.clear()
-            comments.addAll(commentsResponse.data ?: emptyList())
-        } catch (e: Exception) {
-            error = e.message ?: "Failed to load post details"
-        } finally {
-            isLoading = false
-        }
-    }
-
-    suspend fun addReaction(groupId: String, postId: String, reactionType: Int) {
-        isSubmitting = true
-        try {
-            withContext(Dispatchers.IO) {
-                ApiClient.api.addReaction(groupId = groupId, postId = postId, request = AddReactionRequest(reactionType))
-            }
-            load(groupId, postId)
-            AppStateStore.signalFeedRefresh()
-        } catch (e: Exception) {
-            error = e.message ?: "Failed to add reaction"
-        } finally {
-            isSubmitting = false
-        }
-    }
-
-    suspend fun removeReaction(groupId: String, postId: String) {
-        isSubmitting = true
-        try {
-            withContext(Dispatchers.IO) {
-                ApiClient.api.removeReaction(groupId = groupId, postId = postId)
-            }
-            load(groupId, postId)
-            AppStateStore.signalFeedRefresh()
-        } catch (e: Exception) {
-            error = e.message ?: "Failed to remove reaction"
-        } finally {
-            isSubmitting = false
-        }
-    }
-
-    suspend fun addComment(groupId: String, postId: String, content: String) {
-        val trimmed = content.trim()
-        if (trimmed.isEmpty()) return
-
-        isSubmitting = true
-        try {
-            withContext(Dispatchers.IO) {
-                ApiClient.api.createComment(groupId = groupId, postId = postId, request = CreateCommentRequest(content = trimmed))
-            }
-            load(groupId, postId)
-            AppStateStore.signalFeedRefresh()
-        } catch (e: Exception) {
-            error = e.message ?: "Failed to add comment"
-        } finally {
-            isSubmitting = false
-        }
-    }
-}
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PostDetailScreen(postId: String) {
+fun PostDetailScreen(
+    postId: String,
+    onNavigateBack: () -> Unit,
+    viewModel: PostDetailViewModel = viewModel()
+) {
     val groupState by GroupStateStore.state.collectAsState()
+    val authState by AppStateStore.authState.collectAsState()
     val feedRefreshVersion by AppStateStore.feedRefreshVersion.collectAsState()
+    val uiState by viewModel.state.collectAsState()
+
     val currentGroup = groupState.currentGroup
-    val scope = rememberCoroutineScope()
-    val viewModel = remember(postId) { PostDetailViewModel() }
-    var commentInput by remember { mutableStateOf("") }
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    LaunchedEffect(postId, currentGroup?.id) {
-        currentGroup?.id?.let { gid ->
-            viewModel.load(gid, postId)
+    LaunchedEffect(postId, currentGroup?.id, authState.userId) {
+        currentGroup?.id?.let { viewModel.bind(it, postId, authState.userId) }
+    }
+    LaunchedEffect(feedRefreshVersion) {
+        if (feedRefreshVersion > 0 && currentGroup != null) viewModel.refresh()
+    }
+    LaunchedEffect(uiState.actionError) {
+        uiState.actionError?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.dismissActionError()
         }
     }
-    LaunchedEffect(feedRefreshVersion, postId, currentGroup?.id) {
-        val gid = currentGroup?.id ?: return@LaunchedEffect
-        viewModel.load(gid, postId)
-    }
 
-    if (currentGroup == null) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No group selected")
-        }
-        return
-    }
-
-    if (viewModel.isLoading && viewModel.post == null) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
-        }
-        return
-    }
-
-    val post = viewModel.post
-    if (post == null) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(viewModel.error ?: "Post not found")
-        }
-        return
-    }
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        val name = post.user?.name ?: "Unknown"
-                        Box(
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
-                                .padding(horizontal = 12.dp, vertical = 8.dp)
-                        ) {
-                            Text(name.firstOrNull()?.uppercase() ?: "?", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                        }
-                        Column(modifier = Modifier.padding(start = 10.dp)) {
-                            Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                            Text(post.createdAt.take(16).replace("T", " "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        topBar = {
+            TopAppBar(
+                title = { Text("Post") },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
-                    AssistChip(
-                        onClick = {},
-                        label = { Text("${post.activityType?.icon ?: ""} ${post.activityType?.name ?: "Activity"}") },
-                        modifier = Modifier.padding(top = 8.dp),
-                        colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-                    )
-                    if (!post.description.isNullOrBlank()) {
-                        Text(
-                            text = post.description,
-                            style = MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
-                    }
-                    if (!post.images.isNullOrEmpty()) {
-                        PostDetailImageGrid(
-                            images = post.images.take(4),
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
-                    }
-                }
-            }
-        }
-
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text("Reactions", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                        listOf(1 to "👍", 2 to "❤️", 3 to "🔥", 4 to "💪", 5 to "👏").forEach { (value, emoji) ->
-                            OutlinedButton(
-                                onClick = {
-                                    scope.launch {
-                                        viewModel.addReaction(currentGroup.id, postId, value)
-                                    }
-                                },
-                                enabled = !viewModel.isSubmitting
-                            ) {
-                                Text(emoji)
-                            }
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                scope.launch {
-                                    viewModel.removeReaction(currentGroup.id, postId)
-                                }
-                            },
-                            enabled = !viewModel.isSubmitting
-                        ) {
-                            Text("Clear")
-                        }
-                    }
-                    if (viewModel.reactionSummary.isNotEmpty()) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.padding(top = 8.dp)
-                        ) {
-                            viewModel.reactionSummary.forEach { summary ->
-                                Text("${summary.emoji} ${summary.count}")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text("Comments", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                    OutlinedTextField(
-                        value = commentInput,
-                        onValueChange = { commentInput = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp),
-                        label = { Text("Add a comment") }
-                    )
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                viewModel.addComment(currentGroup.id, postId, commentInput)
-                                commentInput = ""
-                            }
-                        },
-                        enabled = commentInput.isNotBlank() && !viewModel.isSubmitting,
-                        modifier = Modifier.padding(top = 8.dp)
-                    ) {
-                        Text("Post Comment")
-                    }
-                }
-            }
-        }
-
-        items(viewModel.comments, key = { it.id }) { comment ->
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-            ) {
-                Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-                    Text(
-                        text = comment.user?.name ?: "Unknown",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = comment.content,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
-                }
-            }
-        }
-
-        item {
-            viewModel.error?.let {
-                Text(it, color = MaterialTheme.colorScheme.error)
-            }
-        }
-    }
-}
-
-@Composable
-private fun PostDetailImageGrid(images: List<PostImageDto>, modifier: Modifier = Modifier) {
-    when (images.size) {
-        1 -> {
-            AuthenticatedImage(
-                imageId = images[0].id,
-                modifier = modifier
-                    .fillMaxWidth()
-                    .height(240.dp)
-                    .clip(MaterialTheme.shapes.small)
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
             )
         }
-        2 -> {
-            Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                images.forEach { image ->
-                    AuthenticatedImage(
-                        imageId = image.id,
-                        modifier = Modifier
-                            .weight(1f)
-                            .aspectRatio(1f)
-                            .clip(MaterialTheme.shapes.small)
-                    )
-                }
-            }
-        }
-        3 -> {
-            Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                AuthenticatedImage(
-                    imageId = images[0].id,
-                    modifier = Modifier
-                        .weight(1f)
-                        .aspectRatio(1f)
-                        .clip(MaterialTheme.shapes.small)
+    ) { padding ->
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+            when {
+                currentGroup == null ->
+                    CenterMessage("No group selected")
+
+                uiState.isLoading && uiState.post == null ->
+                    Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+
+                uiState.post == null ->
+                    CenterMessage(uiState.loadError ?: "Post not found")
+
+                else -> PostDetailContent(
+                    post = uiState.post!!,
+                    comments = uiState.comments,
+                    reactionCounts = uiState.reactionCounts,
+                    myReaction = uiState.myReaction,
+                    isPostingComment = uiState.isPostingComment,
+                    onToggleReaction = viewModel::toggleReaction,
+                    onAddComment = { text, restore -> viewModel.addComment(text, restore) }
                 )
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PostDetailContent(
+    post: PostDto,
+    comments: List<CommentDto>,
+    reactionCounts: Map<Int, Int>,
+    myReaction: Int?,
+    isPostingComment: Boolean,
+    onToggleReaction: (Int) -> Unit,
+    onAddComment: (String, (String) -> Unit) -> Unit
+) {
+    var commentInput by remember { mutableStateOf("") }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item { PostCard(post) }
+        item {
+            ReactionsCard(
+                reactionCounts = reactionCounts,
+                myReaction = myReaction,
+                onToggleReaction = onToggleReaction
+            )
+        }
+        item {
+            CommentComposer(
+                value = commentInput,
+                onValueChange = { commentInput = it },
+                enabled = !isPostingComment,
+                onSubmit = {
+                    val text = commentInput
+                    commentInput = ""
+                    onAddComment(text) { restored -> commentInput = restored }
+                }
+            )
+        }
+        items(comments, key = { it.id }) { comment -> CommentCard(comment) }
+    }
+}
+
+@Composable
+private fun PostCard(post: PostDto) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val name = post.user?.name ?: "Unknown"
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    AuthenticatedImage(
-                        imageId = images[1].id,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1f)
-                            .clip(MaterialTheme.shapes.small)
+                    Text(
+                        text = name.firstOrNull()?.uppercase() ?: "?",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
                     )
-                    AuthenticatedImage(
-                        imageId = images[2].id,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1f)
-                            .clip(MaterialTheme.shapes.small)
+                }
+                Column(modifier = Modifier.padding(start = 10.dp)) {
+                    Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                    Text(
+                        text = formatRelativeTime(post.createdAt),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            post.activityType?.let { activity ->
+                Text(
+                    text = "${activity.icon ?: ""} ${activity.name}",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+            if (!post.description.isNullOrBlank()) {
+                Text(
+                    text = post.description,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+            if (!post.images.isNullOrEmpty()) {
+                PostImageGrid(images = post.images, modifier = Modifier.padding(top = 10.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReactionsCard(
+    reactionCounts: Map<Int, Int>,
+    myReaction: Int?,
+    onToggleReaction: (Int) -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Text("Reactions", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(top = 10.dp)
+            ) {
+                REACTION_TYPES.forEach { (type, emoji) ->
+                    val count = reactionCounts[type] ?: 0
+                    val selected = myReaction == type
+                    FilterChip(
+                        selected = selected,
+                        onClick = { onToggleReaction(type) },
+                        label = { Text(if (count > 0) "$emoji $count" else emoji) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer
+                        )
                     )
                 }
             }
         }
-        else -> {
-            Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                    AuthenticatedImage(
-                        imageId = images[0].id,
-                        modifier = Modifier
-                            .weight(1f)
-                            .aspectRatio(1f)
-                            .clip(MaterialTheme.shapes.small)
-                    )
-                    AuthenticatedImage(
-                        imageId = images[1].id,
-                        modifier = Modifier
-                            .weight(1f)
-                            .aspectRatio(1f)
-                            .clip(MaterialTheme.shapes.small)
-                    )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                    AuthenticatedImage(
-                        imageId = images[2].id,
-                        modifier = Modifier
-                            .weight(1f)
-                            .aspectRatio(1f)
-                            .clip(MaterialTheme.shapes.small)
-                    )
-                    AuthenticatedImage(
-                        imageId = images[3].id,
-                        modifier = Modifier
-                            .weight(1f)
-                            .aspectRatio(1f)
-                            .clip(MaterialTheme.shapes.small)
-                    )
+    }
+}
+
+@Composable
+private fun CommentComposer(
+    value: String,
+    onValueChange: (String) -> Unit,
+    enabled: Boolean,
+    onSubmit: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Text("Comments", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            OutlinedTextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                label = { Text("Add a comment") }
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = onSubmit, enabled = value.isNotBlank() && enabled) {
+                    Text("Post")
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CommentCard(comment: CommentDto) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+            Text(
+                text = comment.user?.name ?: "Unknown",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = comment.content,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun CenterMessage(text: String) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

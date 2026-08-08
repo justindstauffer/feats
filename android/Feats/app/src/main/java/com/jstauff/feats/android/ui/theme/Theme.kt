@@ -3,6 +3,7 @@ package com.jstauff.feats.android.ui.theme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -31,8 +32,20 @@ private val FeatsLightColors = lightColorScheme(
 )
 
 private val FeatsDarkColors = darkColorScheme(
-    primary = FeatsBlue,
-    onPrimary = Color.White
+    primary = FeatsBlueLight,
+    onPrimary = Color(0xFF0B1B2E),
+    primaryContainer = FeatsBlueDeepTint,
+    onPrimaryContainer = FeatsBlueLight,
+    secondary = Color(0xFF5FBF9B),
+    onSecondary = Color(0xFF0B241C),
+    background = FeatsBackgroundDark,
+    onBackground = FeatsTextDark,
+    surface = FeatsSurfaceDark,
+    onSurface = FeatsTextDark,
+    surfaceVariant = FeatsSurfaceVariantDark,
+    onSurfaceVariant = FeatsMutedDark,
+    error = FeatsErrorDark,
+    onError = Color(0xFF2B0A06)
 )
 
 private val FeatsTypography = Typography(
@@ -52,10 +65,17 @@ private val FeatsShapes = Shapes(
     large = androidx.compose.foundation.shape.RoundedCornerShape(22.dp)
 )
 
+/**
+ * Brand palette in both light and dark. Material You dynamic color is deliberately
+ * not used — Feats keeps its own brand colours across platforms.
+ */
 @Composable
-fun FeatsTheme(content: @Composable () -> Unit) {
+fun FeatsTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    content: @Composable () -> Unit
+) {
     MaterialTheme(
-        colorScheme = FeatsLightColors,
+        colorScheme = if (darkTheme) FeatsDarkColors else FeatsLightColors,
         typography = FeatsTypography,
         shapes = FeatsShapes,
         content = content

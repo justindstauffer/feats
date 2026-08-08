@@ -5,6 +5,7 @@ import android.os.Build
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import androidx.compose.material3.MaterialTheme
@@ -21,6 +22,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Android 15+ (targetSdk 35) enforces edge-to-edge; opt in explicitly so
+        // Scaffold receives real system-bar insets instead of drawing underneath them.
+        enableEdgeToEdge()
         handleIntentNavigation()
         requestNotificationPermissionIfNeeded()
 

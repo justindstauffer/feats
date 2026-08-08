@@ -3,6 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -18,6 +19,7 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
+        // Default (inherited by release): production.
         buildConfigField("String", "API_BASE_URL", "\"https://feats-api.jstauff.com/api/v1/\"")
         buildConfigField("String", "WS_BASE_URL", "\"wss://feats-api.jstauff.com/ws\"")
     }
@@ -33,6 +35,11 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            // Point at the dev backend. 10.0.2.2 is the host machine as seen
+            // from the Android emulator. Cleartext to this host is allowed by
+            // the debug-only network security config in src/debug/res.
+            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080/api/v1/\"")
+            buildConfigField("String", "WS_BASE_URL", "\"ws://10.0.2.2:8080/ws\"")
         }
     }
 
@@ -63,6 +70,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.activity:activity-compose:1.10.1")
+    // Transitive deps pull fragment 1.1.0, which trips lint's
+    // InvalidFragmentVersionForActivityResult (needs >= 1.3.0).
+    implementation("androidx.fragment:fragment:1.8.6")
 
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")

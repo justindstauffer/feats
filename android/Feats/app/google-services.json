@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "671884381853",
+    "project_id": "feats-3c515",
+    "storage_bucket": "feats-3c515.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:671884381853:android:bff4d56b954b1d11334e74",
+        "android_client_info": {
+          "package_name": "com.jstauff.feats.android"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDIELS48ie2C-xNS7Lvt8kjrimzV0O0K6U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:671884381853:android:0a63e5ef64766cad334e74",
+        "android_client_info": {
+          "package_name": "com.jstauff.feats.android.debug"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDIELS48ie2C-xNS7Lvt8kjrimzV0O0K6U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
