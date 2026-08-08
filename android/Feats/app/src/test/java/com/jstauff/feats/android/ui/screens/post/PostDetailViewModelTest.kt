@@ -62,6 +62,9 @@ class PostDetailViewModelTest {
         }
         override suspend fun addComment(groupId: String, postId: String, content: String) =
             commentResult(content)
+
+        var deleteResult: ApiResult<Unit> = ApiResult.Success(Unit)
+        override suspend fun deletePost(groupId: String, postId: String) = deleteResult
     }
 
     @Test

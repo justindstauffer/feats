@@ -65,6 +65,21 @@ class PostDetailViewModel(private val repo: PostRepository) : ViewModel() {
 
     fun dismissActionError() = _state.update { it.copy(actionError = null) }
 
+    /** Deletes the post; [onDeleted] navigates away on success. Backend enforces own-or-admin. */
+    fun deletePost(onDeleted: () -> Unit) {
+        val gid = groupId ?: return
+        val pid = postId ?: return
+        viewModelScope.launch {
+            when (val result = repo.deletePost(gid, pid)) {
+                is ApiResult.Success -> {
+                    AppStateStore.signalFeedRefresh()
+                    onDeleted()
+                }
+                is ApiResult.Failure -> _state.update { it.copy(actionError = result.message) }
+            }
+        }
+    }
+
     private fun load(showSpinner: Boolean) {
         val gid = groupId ?: return
         val pid = postId ?: return

@@ -141,6 +141,12 @@ interface FeatsApi {
         @Path("postId") postId: String
     ): ApiResponse<PostDto>
 
+    @DELETE("groups/{groupId}/posts/{postId}")
+    suspend fun deletePost(
+        @Path("groupId") groupId: String,
+        @Path("postId") postId: String
+    ): ApiResponse<Map<String, String>>
+
     @GET("groups/{groupId}/posts/{postId}/reactions")
     suspend fun reactions(
         @Path("groupId") groupId: String,

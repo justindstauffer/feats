@@ -1,7 +1,8 @@
 package com.jstauff.feats.android.ui.screens.feed
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,17 +16,21 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -33,7 +38,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,6 +65,7 @@ fun FeedScreen(
     viewModel: FeedViewModel = viewModel()
 ) {
     val groupState by GroupStateStore.state.collectAsState()
+    val authState by AppStateStore.authState.collectAsState()
     val feedRefreshVersion by AppStateStore.feedRefreshVersion.collectAsState()
     val uiState by viewModel.state.collectAsState()
 
@@ -95,6 +103,14 @@ fun FeedScreen(
                 snackbarHostState.showSnackbar(message)
                 viewModel.dismissError()
             }
+        }
+    }
+
+    // Action failures (e.g. a delete that the server rejected) always surface.
+    LaunchedEffect(uiState.actionError) {
+        uiState.actionError?.let { message ->
+            snackbarHostState.showSnackbar(message)
+            viewModel.dismissError()
         }
     }
 
@@ -151,7 +167,10 @@ fun FeedScreen(
                             posts = uiState.posts,
                             isLoadingMore = uiState.isLoadingMore,
                             listState = listState,
-                            onOpenPost = onOpenPost
+                            currentUserId = authState.userId,
+                            isAdmin = authState.isAdmin,
+                            onOpenPost = onOpenPost,
+                            onDeletePost = viewModel::deletePost
                         )
                     }
                 }
@@ -165,7 +184,10 @@ private fun FeedList(
     posts: List<PostDto>,
     isLoadingMore: Boolean,
     listState: androidx.compose.foundation.lazy.LazyListState,
-    onOpenPost: (String) -> Unit
+    currentUserId: String?,
+    isAdmin: Boolean,
+    onOpenPost: (String) -> Unit,
+    onDeletePost: (String) -> Unit
 ) {
     LazyColumn(
         state = listState,
@@ -174,7 +196,12 @@ private fun FeedList(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(posts, key = { it.id }) { post ->
-            PostCard(post = post, onClick = { onOpenPost(post.id) })
+            PostCard(
+                post = post,
+                canDelete = post.userId == currentUserId || isAdmin,
+                onClick = { onOpenPost(post.id) },
+                onDelete = { onDeletePost(post.id) }
+            )
         }
 
         if (isLoadingMore) {
@@ -190,13 +217,38 @@ private fun FeedList(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PostCard(post: PostDto, onClick: () -> Unit) {
+private fun PostCard(
+    post: PostDto,
+    canDelete: Boolean,
+    onClick: () -> Unit,
+    onDelete: () -> Unit
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
     Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = { if (canDelete) menuExpanded = true }
+            ),
         shape = MaterialTheme.shapes.medium,
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
+        Box {
+            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                DropdownMenuItem(
+                    text = { Text("Delete post") },
+                    onClick = {
+                        menuExpanded = false
+                        showDeleteDialog = true
+                    }
+                )
+            }
+        }
         Column(modifier = Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val name = post.user?.name ?: "Unknown"
@@ -258,6 +310,23 @@ private fun PostCard(post: PostDto, onClick: () -> Unit) {
                 modifier = Modifier.padding(top = 8.dp)
             )
         }
+    }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Delete post?") },
+            text = { Text("This can't be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteDialog = false
+                    onDelete()
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
+            }
+        )
     }
 }
 

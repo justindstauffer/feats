@@ -20,7 +20,7 @@ object SessionManager {
             ApiClient.saveRefreshToken(tokens.refreshToken)
 
             val me = ApiClient.api.me().data
-            AppStateStore.setAuthenticated(tokens.accessToken, me?.id)
+            AppStateStore.setAuthenticated(tokens.accessToken, me?.id, me?.role)
             WebSocketService.connect()
             PushNotificationRegistrar.registerCurrentTokenIfAuthenticated()
         } catch (_: Exception) {
@@ -40,8 +40,8 @@ object SessionManager {
         ApiClient.setAccessToken(tokens.accessToken)
         ApiClient.saveRefreshToken(tokens.refreshToken)
 
-        val userId = payload.user?.id ?: ApiClient.api.me().data?.id
-        AppStateStore.setAuthenticated(tokens.accessToken, userId)
+        val user = payload.user ?: ApiClient.api.me().data
+        AppStateStore.setAuthenticated(tokens.accessToken, user?.id, user?.role)
         WebSocketService.connect()
         PushNotificationRegistrar.registerCurrentTokenIfAuthenticated()
         AppStateStore.markBootstrapComplete()

@@ -19,6 +19,7 @@ interface PostRepository {
     suspend fun addReaction(groupId: String, postId: String, type: Int): ApiResult<Unit>
     suspend fun removeReaction(groupId: String, postId: String): ApiResult<Unit>
     suspend fun addComment(groupId: String, postId: String, content: String): ApiResult<CommentDto>
+    suspend fun deletePost(groupId: String, postId: String): ApiResult<Unit>
 }
 
 class DefaultPostRepository(private val api: FeatsApi = ApiClient.api) : PostRepository {
@@ -40,6 +41,9 @@ class DefaultPostRepository(private val api: FeatsApi = ApiClient.api) : PostRep
 
     override suspend fun addComment(groupId: String, postId: String, content: String): ApiResult<CommentDto> =
         apiCall { api.createComment(groupId, postId, CreateCommentRequest(content = content)) }.unwrap()
+
+    override suspend fun deletePost(groupId: String, postId: String): ApiResult<Unit> =
+        apiCall { api.deletePost(groupId, postId) }.toUnit()
 }
 
 /** Unwraps the {data,error} envelope; a 2xx body with no data becomes a Failure. */

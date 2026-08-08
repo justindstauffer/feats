@@ -15,8 +15,11 @@ data class AuthState(
     val isBootstrapping: Boolean = true,
     val isAuthenticated: Boolean = false,
     val accessToken: String? = null,
-    val userId: String? = null
-)
+    val userId: String? = null,
+    val userRole: String? = null
+) {
+    val isAdmin: Boolean get() = userRole.equals("admin", ignoreCase = true)
+}
 
 enum class BottomTab(val route: String, val label: String, val icon: ImageVector) {
     Feed("feed", "Feed", Icons.Default.Home),
@@ -40,13 +43,14 @@ object AppStateStore {
     private val _streaksRefreshVersion = MutableStateFlow(0)
     val streaksRefreshVersion: StateFlow<Int> = _streaksRefreshVersion
 
-    fun setAuthenticated(accessToken: String, userId: String?) {
+    fun setAuthenticated(accessToken: String, userId: String?, userRole: String? = null) {
         _authState.update {
             it.copy(
                 isBootstrapping = false,
                 isAuthenticated = true,
                 accessToken = accessToken,
-                userId = userId
+                userId = userId,
+                userRole = userRole
             )
         }
     }

@@ -19,7 +19,8 @@ data class FeedUiState(
     val isRefreshing: Boolean = false,
     val isLoadingMore: Boolean = false,
     val hasMore: Boolean = true,
-    val error: String? = null
+    val error: String? = null,
+    val actionError: String? = null
 ) {
     val isEmpty: Boolean get() = posts.isEmpty() && !isInitialLoading && error == null
 }
@@ -65,7 +66,22 @@ class FeedViewModel(private val repository: FeedRepository) : ViewModel() {
     }
 
     fun dismissError() {
-        _state.update { it.copy(error = null) }
+        _state.update { it.copy(error = null, actionError = null) }
+    }
+
+    /** Optimistically removes the post; restores it and reports on failure. */
+    fun deletePost(postId: String) {
+        val id = groupId ?: return
+        val previous = _state.value.posts
+        _state.update { it.copy(posts = it.posts.filterNot { p -> p.id == postId }) }
+        viewModelScope.launch {
+            when (val result = repository.deletePost(id, postId)) {
+                is ApiResult.Success -> Unit // already removed optimistically
+                is ApiResult.Failure -> _state.update {
+                    it.copy(posts = previous, actionError = result.message)
+                }
+            }
+        }
     }
 
     private fun load(page: Int, replace: Boolean) {

@@ -45,6 +45,13 @@ class FeedViewModelTest {
             requestedPages += page
             return handler(groupId, page)
         }
+
+        var deleted = mutableListOf<String>()
+        var deleteResult: ApiResult<Unit> = ApiResult.Success(Unit)
+        override suspend fun deletePost(groupId: String, postId: String): ApiResult<Unit> {
+            deleted += postId
+            return deleteResult
+        }
     }
 
     @Test
@@ -170,6 +177,39 @@ class FeedViewModelTest {
         testScheduler.advanceUntilIdle()
 
         assertEquals(listOf(1), repo.requestedPages)
+    }
+
+    @Test
+    fun `deletePost removes it optimistically`() = runTest(dispatcher) {
+        val repo = FakeRepository { _, _ ->
+            ApiResult.Success(PostsPage(listOf(post("1"), post("2")), page = 1, hasMore = false))
+        }
+        val vm = FeedViewModel(repo)
+        vm.bindGroup("g1")
+        testScheduler.advanceUntilIdle()
+
+        vm.deletePost("1")
+        // Removed immediately, before the network resolves.
+        assertEquals(listOf("2"), vm.state.value.posts.map { it.id })
+        testScheduler.advanceUntilIdle()
+        assertEquals(listOf("1"), repo.deleted)
+    }
+
+    @Test
+    fun `a failed delete restores the post and reports an error`() = runTest(dispatcher) {
+        val repo = FakeRepository { _, _ ->
+            ApiResult.Success(PostsPage(listOf(post("1"), post("2")), page = 1, hasMore = false))
+        }
+        repo.deleteResult = ApiResult.Failure("forbidden")
+        val vm = FeedViewModel(repo)
+        vm.bindGroup("g1")
+        testScheduler.advanceUntilIdle()
+
+        vm.deletePost("1")
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(listOf("1", "2"), vm.state.value.posts.map { it.id })
+        assertEquals("forbidden", vm.state.value.actionError)
     }
 
     @Test

@@ -21,6 +21,7 @@ data class PostsPage(
  */
 interface FeedRepository {
     suspend fun posts(groupId: String, page: Int): ApiResult<PostsPage>
+    suspend fun deletePost(groupId: String, postId: String): ApiResult<Unit>
 }
 
 class DefaultFeedRepository(private val api: FeatsApi = ApiClient.api) : FeedRepository {
@@ -42,5 +43,11 @@ class DefaultFeedRepository(private val api: FeatsApi = ApiClient.api) : FeedRep
                     )
                 )
             }
+        }
+
+    override suspend fun deletePost(groupId: String, postId: String): ApiResult<Unit> =
+        when (val r = apiCall { api.deletePost(groupId, postId) }) {
+            is ApiResult.Success -> ApiResult.Success(Unit)
+            is ApiResult.Failure -> r
         }
 }

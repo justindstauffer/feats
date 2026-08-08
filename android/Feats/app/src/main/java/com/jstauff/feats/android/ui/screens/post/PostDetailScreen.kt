@@ -14,6 +14,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -65,6 +67,12 @@ fun PostDetailScreen(
 
     val currentGroup = groupState.currentGroup
     val snackbarHostState = remember { SnackbarHostState() }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    // Own post or admin — backend enforces the same rule; this just gates the UI.
+    val canDelete = uiState.post?.let {
+        it.userId == authState.userId || authState.isAdmin
+    } ?: false
 
     LaunchedEffect(postId, currentGroup?.id, authState.userId) {
         currentGroup?.id?.let { viewModel.bind(it, postId, authState.userId) }
@@ -87,6 +95,13 @@ fun PostDetailScreen(
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    if (canDelete) {
+                        IconButton(onClick = { showDeleteDialog = true }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete post")
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -117,6 +132,23 @@ fun PostDetailScreen(
                 )
             }
         }
+    }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Delete post?") },
+            text = { Text("This can't be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteDialog = false
+                    viewModel.deletePost(onDeleted = onNavigateBack)
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
+            }
+        )
     }
 }
 
