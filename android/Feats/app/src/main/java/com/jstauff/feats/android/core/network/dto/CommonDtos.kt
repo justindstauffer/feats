@@ -118,6 +118,25 @@ data class RedeemInviteRequest(
 )
 
 @Serializable
+data class GroupInviteDto(
+    val id: String,
+    @SerialName("group_id") val groupId: String,
+    val code: String,
+    @SerialName("created_by") val createdBy: String,
+    @SerialName("expires_at") val expiresAt: String,
+    @SerialName("max_uses") val maxUses: Int,
+    @SerialName("use_count") val useCount: Int,
+    @SerialName("created_at") val createdAt: String? = null,
+    val creator: UserDto? = null
+)
+
+@Serializable
+data class CreateGroupInviteRequest(
+    @SerialName("max_uses") val maxUses: Int = 1,
+    @SerialName("expires_in") val expiresIn: Int = 168
+)
+
+@Serializable
 data class CreatePostRequest(
     @SerialName("activity_type_id") val activityTypeId: String,
     val description: String? = null

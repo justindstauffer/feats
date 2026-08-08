@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -51,15 +52,26 @@ import com.jstauff.feats.android.ui.components.FeatsTopAppBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProfileScreen(viewModel: ProfileViewModel = viewModel()) {
+fun ProfileScreen(
+    viewModel: ProfileViewModel = viewModel(),
+    groupViewModel: com.jstauff.feats.android.ui.screens.groups.GroupManagementViewModel = viewModel()
+) {
     val groupState by GroupStateStore.state.collectAsState()
     val authState by AppStateStore.authState.collectAsState()
     val uiState by viewModel.state.collectAsState()
+    val groupUiState by groupViewModel.state.collectAsState()
 
     val currentGroup = groupState.currentGroup
     val snackbarHostState = remember { SnackbarHostState() }
     var showPasswordSheet by remember { mutableStateOf(false) }
     var showInvitesSheet by remember { mutableStateOf(false) }
+    var showGroupInvitesSheet by remember { mutableStateOf(false) }
+    var showLeaveDialog by remember { mutableStateOf(false) }
+
+    // Group admin = the group's creator or a global admin. Backend enforces the
+    // real rule; this only decides whether to show the invite controls.
+    val isGroupAdmin = currentGroup != null &&
+        (currentGroup.createdBy == authState.userId || authState.isAdmin)
 
     LaunchedEffect(currentGroup?.id, authState.userId) {
         currentGroup?.id?.let { viewModel.bind(it, authState.userId) }
@@ -68,6 +80,12 @@ fun ProfileScreen(viewModel: ProfileViewModel = viewModel()) {
         uiState.actionError?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.dismissActionError()
+        }
+    }
+    LaunchedEffect(groupUiState.actionError) {
+        groupUiState.actionError?.let {
+            snackbarHostState.showSnackbar(it)
+            groupViewModel.dismissActionError()
         }
     }
 
@@ -105,6 +123,23 @@ fun ProfileScreen(viewModel: ProfileViewModel = viewModel()) {
                             onClick = { showPasswordSheet = true },
                             modifier = Modifier.fillMaxWidth()
                         ) { Text("Change password") }
+                    }
+                    if (isGroupAdmin) {
+                        item {
+                            OutlinedButton(
+                                onClick = {
+                                    currentGroup?.id?.let(groupViewModel::loadInvites)
+                                    showGroupInvitesSheet = true
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Invite people to ${currentGroup?.name ?: "group"}") }
+                        }
+                    }
+                    item {
+                        OutlinedButton(
+                            onClick = { showLeaveDialog = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Leave group") }
                     }
                     if (uiState.isAdmin) {
                         item {
@@ -149,6 +184,100 @@ fun ProfileScreen(viewModel: ProfileViewModel = viewModel()) {
                 onCreate = { maxUses, days, note -> viewModel.createInvite(maxUses, days, note) {} },
                 onDelete = viewModel::deleteInvite
             )
+        }
+    }
+
+    if (showGroupInvitesSheet && currentGroup != null) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(onDismissRequest = { showGroupInvitesSheet = false }, sheetState = sheetState) {
+            GroupInvitesForm(
+                groupName = currentGroup.name,
+                invites = groupUiState.invites,
+                isLoading = groupUiState.isLoading,
+                isSaving = groupUiState.isSubmitting,
+                onCreate = { maxUses, days -> groupViewModel.createInvite(maxUses, days) },
+                onRevoke = groupViewModel::revokeInvite
+            )
+        }
+    }
+
+    if (showLeaveDialog && currentGroup != null) {
+        AlertDialog(
+            onDismissRequest = { showLeaveDialog = false },
+            title = { Text("Leave ${currentGroup.name}?") },
+            text = { Text("You'll stop seeing this group's feed and need an invite to rejoin.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showLeaveDialog = false
+                    groupViewModel.leaveGroup(currentGroup.id) {}
+                }) { Text("Leave") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLeaveDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+}
+
+@Composable
+private fun GroupInvitesForm(
+    groupName: String,
+    invites: List<com.jstauff.feats.android.core.network.dto.GroupInviteDto>,
+    isLoading: Boolean,
+    isSaving: Boolean,
+    onCreate: (Int, Int) -> Unit,
+    onRevoke: (String) -> Unit
+) {
+    var maxUses by remember { mutableStateOf(1) }
+    var days by remember { mutableStateOf(7) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 20.dp, end = 20.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text("Invite people to $groupName", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(
+            "Create a code and share it. Anyone with the code can join the group.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Max uses", modifier = Modifier.weight(1f))
+            OutlinedButton(onClick = { maxUses = (maxUses - 1).coerceAtLeast(0) }, enabled = !isSaving) { Text("−") }
+            Text(if (maxUses == 0) "∞" else "$maxUses")
+            OutlinedButton(onClick = { maxUses = (maxUses + 1).coerceAtMost(100) }, enabled = !isSaving) { Text("+") }
+        }
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Expires (days)", modifier = Modifier.weight(1f))
+            OutlinedButton(onClick = { days = (days - 1).coerceAtLeast(1) }, enabled = !isSaving) { Text("−") }
+            Text("$days")
+            OutlinedButton(onClick = { days = (days + 1).coerceAtMost(30) }, enabled = !isSaving) { Text("+") }
+        }
+        Button(
+            onClick = { onCreate(maxUses, days) },
+            enabled = !isSaving,
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Create invite code") }
+
+        if (isLoading) {
+            CircularProgressIndicator()
+        } else if (invites.isEmpty()) {
+            Text("No active invite codes", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            invites.forEach { invite ->
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                        Text(invite.code, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        val uses = if (invite.maxUses == 0) "${invite.useCount}/∞" else "${invite.useCount}/${invite.maxUses}"
+                        Text("Uses: $uses", style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { onRevoke(invite.id) }, enabled = !isSaving) { Text("Revoke") }
+                    }
+                }
+            }
         }
     }
 }

@@ -13,7 +13,9 @@ import com.jstauff.feats.android.core.network.dto.CreateCommentRequest
 import com.jstauff.feats.android.core.network.dto.CreateGroupRequest
 import com.jstauff.feats.android.core.network.dto.CreatePostRequest
 import com.jstauff.feats.android.core.network.dto.GoalDto
+import com.jstauff.feats.android.core.network.dto.CreateGroupInviteRequest
 import com.jstauff.feats.android.core.network.dto.GroupDto
+import com.jstauff.feats.android.core.network.dto.GroupInviteDto
 import com.jstauff.feats.android.core.network.dto.LoginPayload
 import com.jstauff.feats.android.core.network.dto.LoginRequest
 import com.jstauff.feats.android.core.network.dto.PaginatedResponse
@@ -66,6 +68,24 @@ interface FeatsApi {
 
     @POST("invites/redeem")
     suspend fun redeemInvite(@Body request: RedeemInviteRequest): ApiResponse<GroupDto>
+
+    @POST("groups/{groupId}/leave")
+    suspend fun leaveGroup(@Path("groupId") groupId: String): ApiResponse<Map<String, String>>
+
+    @GET("groups/{groupId}/invites")
+    suspend fun groupInvites(@Path("groupId") groupId: String): ApiResponse<List<GroupInviteDto>>
+
+    @POST("groups/{groupId}/invites")
+    suspend fun createGroupInvite(
+        @Path("groupId") groupId: String,
+        @Body request: CreateGroupInviteRequest
+    ): ApiResponse<GroupInviteDto>
+
+    @DELETE("groups/{groupId}/invites/{inviteId}")
+    suspend fun revokeGroupInvite(
+        @Path("groupId") groupId: String,
+        @Path("inviteId") inviteId: String
+    ): ApiResponse<Map<String, String>>
 
     @GET("groups/{groupId}/activities")
     suspend fun activities(
