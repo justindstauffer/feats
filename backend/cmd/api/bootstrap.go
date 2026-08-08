@@ -114,8 +114,14 @@ func setupRouter(cfg *config.Config, h *appHandlers, m *appMiddleware) (*gin.Eng
 
 	trustedProxies := cfg.TrustedProxies
 	if len(trustedProxies) == 0 {
-		// Secure default: do not trust forwarded-for headers from any proxy.
-		trustedProxies = nil
+		// The API only listens on loopback behind nginx (see deploy/), so the
+		// sole client that can reach it is the local reverse proxy. Trust
+		// loopback + private ranges so ClientIP() resolves the real user's IP
+		// from X-Forwarded-For. Trusting NO proxy made every request appear to
+		// come from the proxy's IP, which collapsed per-IP rate limits into a
+		// single global bucket (one user's failures locked out everyone).
+		// Override with TRUSTED_PROXIES for stricter/edge deployments.
+		trustedProxies = []string{"127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}
 	}
 	if err := router.SetTrustedProxies(trustedProxies); err != nil {
 		return nil, fmt.Errorf("invalid TRUSTED_PROXIES config: %w", err)

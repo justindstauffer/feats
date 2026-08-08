@@ -1,7 +1,11 @@
 package middleware
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -121,15 +125,51 @@ func (rl *RateLimiter) rateLimitMiddleware(keyFunc func(*gin.Context) string, ma
 	}
 }
 
-// LoginRateLimit applies stricter rate limiting to login endpoints
+// LoginRateLimit applies stricter rate limiting to auth endpoints.
+//
+// Keyed by the attempted email (falling back to client IP when the request has
+// no email, e.g. token refresh) so one person's failed logins only throttle
+// that account — not everyone sharing a home/NAT IP. Per-account lockout in the
+// auth service remains the primary brute-force defense.
 func (rl *RateLimiter) LoginRateLimit() gin.HandlerFunc {
 	// 5 attempts per 15 minutes = 5/900 = 0.0056 per second
 	maxTokens := float64(rl.cfg.RateLimitLogin)
 	refillRate := maxTokens / (15 * 60) // refill over 15 minutes
 
-	return rl.rateLimitMiddleware(func(c *gin.Context) string {
-		return "login:" + c.ClientIP()
-	}, maxTokens, refillRate)
+	return rl.rateLimitMiddleware(loginRateKey, maxTokens, refillRate)
+}
+
+// loginRateKey keys auth rate limiting by the submitted email, falling back to
+// client IP when no email is present.
+func loginRateKey(c *gin.Context) string {
+	if email := extractLoginEmail(c); email != "" {
+		return "login:email:" + strings.ToLower(strings.TrimSpace(email))
+	}
+	return "login:ip:" + c.ClientIP()
+}
+
+// extractLoginEmail reads the "email" field from a JSON body and restores the
+// body so the downstream handler can still bind it. Returns "" on any problem.
+func extractLoginEmail(c *gin.Context) string {
+	if c.Request == nil || c.Request.Body == nil {
+		return ""
+	}
+	// Auth bodies are tiny; cap the read as a safety valve.
+	const maxBody = 1 << 20
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, maxBody))
+	if err != nil {
+		return ""
+	}
+	// Restore the consumed body for the handler.
+	c.Request.Body = io.NopCloser(bytes.NewReader(body))
+
+	var payload struct {
+		Email string `json:"email"`
+	}
+	if json.Unmarshal(body, &payload) != nil {
+		return ""
+	}
+	return payload.Email
 }
 
 // APIRateLimit applies general rate limiting to authenticated endpoints
