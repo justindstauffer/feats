@@ -2,6 +2,7 @@ package com.jstauff.feats.android.core.network
 
 import com.jstauff.feats.android.core.network.dto.LoginRequest
 import com.jstauff.feats.android.core.network.dto.RefreshRequest
+import com.jstauff.feats.android.core.network.dto.RegisterRequest
 import com.jstauff.feats.android.core.push.PushNotificationRegistrar
 import com.jstauff.feats.android.core.realtime.WebSocketService
 import com.jstauff.feats.android.core.state.AppStateStore
@@ -42,6 +43,24 @@ object SessionManager {
 
         val user = payload.user ?: ApiClient.api.me().data
         AppStateStore.setAuthenticated(tokens.accessToken, user?.id, user?.role)
+        WebSocketService.connect()
+        PushNotificationRegistrar.registerCurrentTokenIfAuthenticated()
+        AppStateStore.markBootstrapComplete()
+    }
+
+    suspend fun register(email: String, password: String, name: String, inviteCode: String) {
+        val response = ApiClient.api.register(
+            RegisterRequest(email = email, password = password, name = name, inviteCode = inviteCode)
+        )
+        val payload = response.data ?: throw IllegalStateException(
+            response.error?.message ?: "Registration failed"
+        )
+        val tokens = payload.tokens
+
+        ApiClient.setAccessToken(tokens.accessToken)
+        ApiClient.saveRefreshToken(tokens.refreshToken)
+
+        AppStateStore.setAuthenticated(tokens.accessToken, payload.user?.id, payload.user?.role)
         WebSocketService.connect()
         PushNotificationRegistrar.registerCurrentTokenIfAuthenticated()
         AppStateStore.markBootstrapComplete()

@@ -22,6 +22,14 @@ data class LoginRequest(
 )
 
 @Serializable
+data class RegisterRequest(
+    val email: String,
+    val password: String,
+    val name: String,
+    @SerialName("invite_code") val inviteCode: String
+)
+
+@Serializable
 data class RefreshRequest(
     @SerialName("refresh_token") val refreshToken: String
 )

@@ -25,6 +25,7 @@ import com.jstauff.feats.android.core.network.dto.ReactionDto
 import com.jstauff.feats.android.core.network.dto.ReactionsPayloadDto
 import com.jstauff.feats.android.core.network.dto.RedeemInviteRequest
 import com.jstauff.feats.android.core.network.dto.RefreshRequest
+import com.jstauff.feats.android.core.network.dto.RegisterRequest
 import com.jstauff.feats.android.core.network.dto.StreakDto
 import com.jstauff.feats.android.core.network.dto.TokenPair
 import com.jstauff.feats.android.core.network.dto.UpdateUserRequest
@@ -41,6 +42,9 @@ import retrofit2.http.Query
 interface FeatsApi {
     @POST("auth/login")
     suspend fun login(@Body request: LoginRequest): ApiResponse<LoginPayload>
+
+    @POST("auth/register")
+    suspend fun register(@Body request: RegisterRequest): ApiResponse<LoginPayload>
 
     @POST("auth/refresh")
     suspend fun refresh(@Body request: RefreshRequest): ApiResponse<TokenPair>

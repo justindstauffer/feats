@@ -8,6 +8,7 @@ import androidx.navigation.navArgument
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.jstauff.feats.android.ui.screens.auth.LoginScreen
+import com.jstauff.feats.android.ui.screens.auth.RegisterScreen
 import com.jstauff.feats.android.ui.screens.challenges.ChallengesScreen
 import com.jstauff.feats.android.ui.screens.feed.FeedScreen
 import com.jstauff.feats.android.ui.screens.leaderboard.LeaderboardScreen
@@ -27,11 +28,25 @@ fun AppNavHost(
         modifier = modifier
     ) {
         composable("login") {
-            LoginScreen(onLoginSuccess = {
-                navController.navigate("feed") {
-                    popUpTo("login") { inclusive = true }
-                }
-            })
+            LoginScreen(
+                onLoginSuccess = {
+                    navController.navigate("feed") {
+                        popUpTo("login") { inclusive = true }
+                    }
+                },
+                onNavigateToRegister = { navController.navigate("register") }
+            )
+        }
+
+        composable("register") {
+            RegisterScreen(
+                onRegisterSuccess = {
+                    navController.navigate("feed") {
+                        popUpTo("login") { inclusive = true }
+                    }
+                },
+                onNavigateBack = { navController.popBackStack() }
+            )
         }
 
         composable("feed") {
