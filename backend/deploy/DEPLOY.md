@@ -1,122 +1,61 @@
 # Feats API Deployment Guide
 
+> ⚠️ **Use `deploy.sh` / docker-compose — do NOT `docker run` with bind mounts.**
+> The production database lives in the **external named volume `feats-data`**
+> (see `docker-compose.yml`), not in `/opt/feats-api/data`. An earlier version of
+> this guide used `docker run -v /opt/feats-api/data:/app/data`, which points the
+> app at an *empty* directory while the real data sits untouched in the named
+> volume — the app comes up looking like all data was lost. Always deploy through
+> `docker compose` so the correct volumes are attached.
+
 ## Prerequisites
 
-- Docker installed on your local machine
-- SSH access to the production server
-- The `.env.production` file configured on the server at `/opt/feats-api/.env.production`
+- SSH access to the production server (user `feats`)
+- `/opt/feats-api/.env.production` configured on the server
+- Secrets present on the host (mounted read-only by `docker-compose.yml`):
+  - `/home/feats/secrets/apns.p8` — APNs key (iOS push)
+  - `/home/feats/secrets/feats-fcm.json` — Firebase service-account key (Android push)
 
-## Build and Deploy
-
-### 1. Build the Docker Image (on your Mac)
-
-```bash
-cd /Users/jstauff/Documents/Development/feats-api/backend
-
-# Build for AMD64 (server architecture)
-docker build --platform linux/amd64 -t feats-api:latest .
-```
-
-### 2. Save and Transfer to Server
+## Standard deploy (from your Mac)
 
 ```bash
-# Save the image to a compressed tar file
-docker save feats-api:latest | gzip > feats-api.tar.gz
-
-# Transfer to server (replace YOUR_SERVER with your server IP or hostname)
-scp feats-api.tar.gz root@YOUR_SERVER:/opt/feats-api/
+cd backend/deploy
+./deploy.sh <server-ip-or-hostname>
 ```
 
-### 3. Deploy on Server
+This pushes nothing itself — it SSHes in, runs `git reset --hard origin/main`,
+then `docker compose build --no-cache && down && up`. Because `feats-data` and
+`feats-storage` are `external: true`, `down`/`up` never removes them, so the
+database and uploads are preserved.
 
-SSH into your server:
-```bash
-ssh root@YOUR_SERVER
-```
+Make sure your work is pushed to `origin/main` first (`git push origin main`).
 
-Load the image and restart the container:
-```bash
-cd /opt/feats-api
+## Enabling Android push (FCM) — one-time server setup
 
-# Load the new image
-docker load < feats-api.tar.gz
+The FCM migration needs the service-account key on the host and an env var:
 
-# Stop and remove the old container
-docker stop feats-api
-docker rm feats-api
+1. Copy the Firebase service-account JSON to the server:
+   ```bash
+   scp feats-fcm.json feats@<server>:/home/feats/secrets/feats-fcm.json
+   ```
+2. Add this line to `/opt/feats-api/.env.production` on the server
+   (**absolute, in-container path** — Go does not expand `~`):
+   ```
+   FCM_CREDENTIALS_PATH=/app/secrets/feats-fcm.json
+   ```
+3. Deploy as above. On startup the logs should show `FCM notifications enabled`.
 
-# Start the new container
-docker run -d --name feats-api \
-  -p 8080:8080 \
-  -v /opt/feats-api/data:/app/data \
-  -v /opt/feats-api/storage:/app/storage \
-  --env-file /opt/feats-api/.env.production \
-  feats-api:latest
-```
-
-### 4. Verify Deployment
-
-Check that the container is running:
-```bash
-docker ps
-```
-
-Check the logs for any errors:
-```bash
-docker logs feats-api
-```
-
-Test the health endpoint:
-```bash
-curl http://localhost:8080/health
-```
-
-You should see: `{"status":"ok"}`
-
-## Quick Deploy Script
-
-For convenience, you can run this one-liner on the server after uploading the tar file:
+## Verify
 
 ```bash
-cd /opt/feats-api && docker load < feats-api.tar.gz && docker stop feats-api && docker rm feats-api && docker run -d --name feats-api -p 8080:8080 -v /opt/feats-api/data:/app/data -v /opt/feats-api/storage:/app/storage --env-file /opt/feats-api/.env.production feats-api:latest && docker logs -f feats-api
+ssh feats@<server> 'cd /opt/feats-api/backend/deploy && docker compose logs --tail=30'
+curl -sf https://feats-api.jstauff.com/health
 ```
 
-## Troubleshooting
-
-### View container logs
-```bash
-docker logs feats-api
-docker logs -f feats-api  # Follow logs in real-time
-```
-
-### Check container status
-```bash
-docker ps -a
-```
-
-### Restart container
-```bash
-docker restart feats-api
-```
-
-### Check environment variables
-```bash
-docker inspect feats-api | grep -A 30 "Env"
-```
-
-### Enter container shell
-```bash
-docker exec -it feats-api /bin/sh
-```
+Look for `APNs notifications enabled` and `FCM notifications enabled`.
 
 ## Rollback
 
-If you need to rollback to a previous version, keep old tar files with version names:
-```bash
-# Before deploying, save current version
-docker save feats-api:latest | gzip > feats-api-backup-$(date +%Y%m%d).tar.gz
-
-# To rollback, load the backup
-docker load < feats-api-backup-YYYYMMDD.tar.gz
-# Then restart as above
-```
+`deploy.sh` uses `git reset --hard origin/main`, so to roll back, move `main`
+back (revert the bad commit and push) and re-run `deploy.sh`. The external
+volumes keep the data across rollbacks.

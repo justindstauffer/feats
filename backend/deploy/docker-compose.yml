@@ -13,6 +13,10 @@ services:
       - feats-storage:/app/storage
       # APNs key for push notifications (read-only)
       - /home/feats/secrets/apns.p8:/app/secrets/apns.p8:ro
+      # FCM (Android push) service-account key (read-only). Place the file on the
+      # host at this path; it is not in git. FCM_CREDENTIALS_PATH in
+      # .env.production must point at the in-container path below.
+      - /home/feats/secrets/feats-fcm.json:/app/secrets/feats-fcm.json:ro
     environment:
       - DATABASE_PATH=/app/data/feats.db
       - STORAGE_PATH=/app/storage
