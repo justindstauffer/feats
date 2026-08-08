@@ -19,6 +19,7 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
+        // Default (inherited by release): production.
         buildConfigField("String", "API_BASE_URL", "\"https://feats-api.jstauff.com/api/v1/\"")
         buildConfigField("String", "WS_BASE_URL", "\"wss://feats-api.jstauff.com/ws\"")
     }
@@ -34,6 +35,11 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            // Point at the dev backend. 10.0.2.2 is the host machine as seen
+            // from the Android emulator. Cleartext to this host is allowed by
+            // the debug-only network security config in src/debug/res.
+            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080/api/v1/\"")
+            buildConfigField("String", "WS_BASE_URL", "\"ws://10.0.2.2:8080/ws\"")
         }
     }
 
