@@ -1,467 +1,388 @@
 package com.jstauff.feats.android.ui.screens.profile
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.background
-import com.jstauff.feats.android.core.network.ApiClient
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jstauff.feats.android.core.network.SessionManager
 import com.jstauff.feats.android.core.network.dto.BetaInviteDto
-import com.jstauff.feats.android.core.network.dto.ChangePasswordRequest
-import com.jstauff.feats.android.core.network.dto.CreateBetaInviteRequest
 import com.jstauff.feats.android.core.network.dto.GoalDto
-import com.jstauff.feats.android.core.network.dto.StreakDto
-import com.jstauff.feats.android.core.network.dto.UpdateUserRequest
-import com.jstauff.feats.android.core.network.dto.UserDto
 import com.jstauff.feats.android.core.state.AppStateStore
 import com.jstauff.feats.android.core.state.GroupStateStore
-import com.jstauff.feats.android.ui.components.GroupHeaderCard
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import com.jstauff.feats.android.ui.components.FeatsTopAppBar
 
-private class ProfileViewModel {
-    var user by mutableStateOf<UserDto?>(null)
-    var streak by mutableStateOf<StreakDto?>(null)
-    val goals = mutableStateListOf<GoalDto>()
-    val betaInvites = mutableStateListOf<BetaInviteDto>()
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ProfileScreen(viewModel: ProfileViewModel = viewModel()) {
+    val groupState by GroupStateStore.state.collectAsState()
+    val authState by AppStateStore.authState.collectAsState()
+    val uiState by viewModel.state.collectAsState()
 
-    var editName by mutableStateOf("")
-    var editBio by mutableStateOf("")
-    var currentPassword by mutableStateOf("")
-    var newPassword by mutableStateOf("")
-    var confirmPassword by mutableStateOf("")
-    var inviteMaxUses by mutableStateOf(1)
-    var inviteExpiresDays by mutableStateOf(7)
-    var inviteNote by mutableStateOf("")
+    val currentGroup = groupState.currentGroup
+    val snackbarHostState = remember { SnackbarHostState() }
+    var showPasswordSheet by remember { mutableStateOf(false) }
+    var showInvitesSheet by remember { mutableStateOf(false) }
 
-    var isLoading by mutableStateOf(false)
-    var isSaving by mutableStateOf(false)
-    var error by mutableStateOf<String?>(null)
+    LaunchedEffect(currentGroup?.id, authState.userId) {
+        currentGroup?.id?.let { viewModel.bind(it, authState.userId) }
+    }
+    LaunchedEffect(uiState.actionError) {
+        uiState.actionError?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.dismissActionError()
+        }
+    }
 
-    suspend fun load(groupId: String, fallbackUserId: String?) {
-        isLoading = true
-        error = null
-        try {
-            val me = withContext(Dispatchers.IO) { ApiClient.api.me().data }
-                ?: throw IllegalStateException("Failed to load user")
-            user = me
-            if (editName.isBlank()) editName = me.name
-            if (editBio.isBlank()) editBio = me.bio.orEmpty()
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        topBar = {
+            FeatsTopAppBar(
+                title = "Profile",
+                currentGroup = currentGroup,
+                groups = groupState.groups,
+                onSelectGroup = { GroupStateStore.selectGroup(it) }
+            )
+        }
+    ) { padding ->
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+            when {
+                currentGroup == null -> Center("No group selected")
+                uiState.isLoading && uiState.user == null ->
+                    Box(Modifier.fillMaxSize(), androidx.compose.ui.Alignment.Center) { CircularProgressIndicator() }
 
-            val userId = me.id.ifBlank { fallbackUserId.orEmpty() }
-            if (userId.isNotBlank()) {
-                streak = withContext(Dispatchers.IO) { ApiClient.api.userStreak(groupId, userId).data }
-                goals.clear()
-                goals.addAll(withContext(Dispatchers.IO) { ApiClient.api.userGoals(groupId, userId).data } ?: emptyList())
-            } else {
-                streak = null
-                goals.clear()
+                else -> LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    uiState.user?.let { user ->
+                        item { AccountCard(name = user.name, email = user.email, isAdmin = uiState.isAdmin) }
+                        item { EditProfileCard(user.name, user.bio.orEmpty(), uiState.isSaving, viewModel) }
+                    }
+                    item { StreakCard(uiState.streak?.currentStreak, uiState.streak?.longestStreak) }
+                    item { GoalsCard(uiState.goals) }
+
+                    item {
+                        OutlinedButton(
+                            onClick = { showPasswordSheet = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Change password") }
+                    }
+                    if (uiState.isAdmin) {
+                        item {
+                            OutlinedButton(
+                                onClick = { showInvitesSheet = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Manage beta invites") }
+                        }
+                    }
+                    item {
+                        Button(
+                            onClick = { SessionManager.logout() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Log out") }
+                    }
+                }
             }
-
-            if (me.role.equals("admin", ignoreCase = true)) {
-                betaInvites.clear()
-                betaInvites.addAll(withContext(Dispatchers.IO) { ApiClient.api.listBetaInvites().data } ?: emptyList())
-            } else {
-                betaInvites.clear()
-            }
-        } catch (e: Exception) {
-            error = e.message ?: "Failed to load profile"
-        } finally {
-            isLoading = false
         }
     }
 
-    suspend fun saveProfile() {
-        val name = editName.trim()
-        if (name.isBlank()) return
-        isSaving = true
-        error = null
-        try {
-            val updated = withContext(Dispatchers.IO) {
-                ApiClient.api.updateMe(UpdateUserRequest(name = name, bio = editBio.trim().ifBlank { null })).data
-            } ?: throw IllegalStateException("Failed to update profile")
-            user = updated
-            editName = updated.name
-            editBio = updated.bio.orEmpty()
-        } catch (e: Exception) {
-            error = e.message ?: "Failed to save profile"
-        } finally {
-            isSaving = false
+    if (showPasswordSheet) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(onDismissRequest = { showPasswordSheet = false }, sheetState = sheetState) {
+            ChangePasswordForm(
+                isSaving = uiState.isSaving,
+                onSubmit = { current, new, confirm ->
+                    viewModel.changePassword(current, new, confirm) {
+                        showPasswordSheet = false
+                        SessionManager.logout()
+                    }
+                }
+            )
         }
     }
 
-    suspend fun changePassword(): Boolean {
-        if (!canChangePassword()) return false
-        isSaving = true
-        error = null
-        return try {
-            withContext(Dispatchers.IO) {
-                ApiClient.api.changePassword(
-                    ChangePasswordRequest(
-                        currentPassword = currentPassword,
-                        newPassword = newPassword
-                    )
-                )
-            }
-            currentPassword = ""
-            newPassword = ""
-            confirmPassword = ""
-            true
-        } catch (e: Exception) {
-            error = e.message ?: "Failed to change password"
-            false
-        } finally {
-            isSaving = false
+    if (showInvitesSheet) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(onDismissRequest = { showInvitesSheet = false }, sheetState = sheetState) {
+            BetaInvitesForm(
+                invites = uiState.betaInvites,
+                isSaving = uiState.isSaving,
+                onCreate = { maxUses, days, note -> viewModel.createInvite(maxUses, days, note) {} },
+                onDelete = viewModel::deleteInvite
+            )
         }
-    }
-
-    suspend fun createInvite() {
-        isSaving = true
-        error = null
-        try {
-            val invite = withContext(Dispatchers.IO) {
-                ApiClient.api.createBetaInvite(
-                    CreateBetaInviteRequest(
-                        maxUses = inviteMaxUses.coerceAtLeast(0),
-                        expiresIn = (inviteExpiresDays.coerceAtLeast(1) * 24),
-                        note = inviteNote.trim().ifBlank { null }
-                    )
-                ).data
-            } ?: throw IllegalStateException("Failed to create invite")
-            betaInvites.add(0, invite)
-            inviteNote = ""
-        } catch (e: Exception) {
-            error = e.message ?: "Failed to create invite"
-        } finally {
-            isSaving = false
-        }
-    }
-
-    suspend fun deleteInvite(inviteId: String) {
-        isSaving = true
-        error = null
-        try {
-            withContext(Dispatchers.IO) { ApiClient.api.deleteBetaInvite(inviteId) }
-            betaInvites.removeAll { it.id == inviteId }
-        } catch (e: Exception) {
-            error = e.message ?: "Failed to delete invite"
-        } finally {
-            isSaving = false
-        }
-    }
-
-    fun canChangePassword(): Boolean {
-        if (currentPassword.isBlank()) return false
-        if (newPassword != confirmPassword) return false
-        if (newPassword.length < 12) return false
-        if (newPassword.none { it.isUpperCase() }) return false
-        if (newPassword.none { it.isLowerCase() }) return false
-        if (newPassword.none { it.isDigit() }) return false
-        val special = "!@#$%^&*()_+-=[]{}|;':\",./<>?"
-        if (newPassword.none { special.contains(it) }) return false
-        return true
     }
 }
 
 @Composable
-fun ProfileScreen() {
-    val groupState by GroupStateStore.state.collectAsState()
-    val authState by AppStateStore.authState.collectAsState()
-    val currentGroup = groupState.currentGroup
-    val scope = rememberCoroutineScope()
-    val viewModel = remember { ProfileViewModel() }
-
-    LaunchedEffect(currentGroup?.id, authState.userId) {
-        val groupId = currentGroup?.id ?: return@LaunchedEffect
-        viewModel.load(groupId = groupId, fallbackUserId = authState.userId)
-    }
-
-    if (currentGroup == null) {
-        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
-            Text("No group selected", modifier = Modifier.padding(horizontal = 16.dp))
-        }
-        return
-    }
-
-    if (viewModel.isLoading && viewModel.user == null) {
-        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
-            CircularProgressIndicator(modifier = Modifier.padding(horizontal = 16.dp))
-        }
-        return
-    }
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+private fun AccountCard(name: String, email: String, isAdmin: Boolean) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        item {
-            GroupHeaderCard(
-                title = "Profile",
-                currentGroup = currentGroup,
-                groups = groupState.groups,
-                onSelectGroup = { GroupStateStore.selectGroup(it) },
-                onReloadGroups = { scope.launch { GroupStateStore.loadGroups() } }
-            )
-        }
-
-        item {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Account", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                OutlinedButton(
-                    onClick = { scope.launch { viewModel.load(currentGroup.id, authState.userId) } },
-                    enabled = !viewModel.isLoading && !viewModel.isSaving
-                ) { Text("Refresh") }
-            }
-        }
-
-        item {
-            val user = viewModel.user
-            if (user != null) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
-                                .padding(horizontal = 14.dp, vertical = 10.dp)
-                        ) {
-                            Text(user.name.firstOrNull()?.uppercase() ?: "?", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                        }
-                        Column {
-                            Text(user.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text(user.email, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            user.role?.takeIf { it.equals("admin", ignoreCase = true) }?.let {
-                                Text("Admin", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        item { HorizontalDivider() }
-
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text("Edit Profile", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                    OutlinedTextField(
-                        value = viewModel.editName,
-                        onValueChange = { viewModel.editName = it },
-                        label = { Text("Name") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp),
-                        enabled = !viewModel.isSaving
-                    )
-                    OutlinedTextField(
-                        value = viewModel.editBio,
-                        onValueChange = { viewModel.editBio = it },
-                        label = { Text("Bio") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp),
-                        minLines = 2,
-                        enabled = !viewModel.isSaving
-                    )
-                    Button(
-                        onClick = { scope.launch { viewModel.saveProfile() } },
-                        enabled = viewModel.editName.trim().isNotEmpty() && !viewModel.isSaving,
-                        modifier = Modifier.padding(top = 8.dp)
-                    ) { Text("Save Profile") }
-                }
-            }
-        }
-
-        item { HorizontalDivider() }
-
-        item {
-            Text("Change Password", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            OutlinedTextField(
-                value = viewModel.currentPassword,
-                onValueChange = { viewModel.currentPassword = it },
-                label = { Text("Current password") },
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                enabled = !viewModel.isSaving
-            )
-            OutlinedTextField(
-                value = viewModel.newPassword,
-                onValueChange = { viewModel.newPassword = it },
-                label = { Text("New password") },
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                enabled = !viewModel.isSaving
-            )
-            OutlinedTextField(
-                value = viewModel.confirmPassword,
-                onValueChange = { viewModel.confirmPassword = it },
-                label = { Text("Confirm new password") },
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                enabled = !viewModel.isSaving
-            )
-            Text("Requires 12+ chars, upper/lower/number/special", style = MaterialTheme.typography.bodySmall)
-            Button(
-                onClick = {
-                    scope.launch {
-                        val changed = viewModel.changePassword()
-                        if (changed) {
-                            SessionManager.logout()
-                        }
-                    }
-                },
-                enabled = viewModel.canChangePassword() && !viewModel.isSaving,
-                modifier = Modifier.padding(top = 8.dp)
-            ) { Text("Change Password") }
-        }
-
-        item { HorizontalDivider() }
-
-        item {
-            Text("Streak", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            viewModel.streak?.let { streak ->
-                Text("Current: ${streak.currentStreak} days", modifier = Modifier.padding(top = 4.dp))
-                Text("Longest: ${streak.longestStreak} days")
-            } ?: Text("No streak data yet", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
-        }
-
-        item { HorizontalDivider() }
-
-        item {
-            Text("Goals", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-        }
-        if (viewModel.goals.isEmpty()) {
-            item { Text("No goals set", style = MaterialTheme.typography.bodyMedium) }
-        } else {
-            items(viewModel.goals, key = { it.id }) { goal ->
-                val label = goal.activityType?.let { "${it.icon ?: ""} ${it.name}" } ?: "Any Activity"
-                val period = goal.period.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Text(label, fontWeight = FontWeight.SemiBold)
-                    Text("$period • ${goal.currentProgress}/${goal.targetCount}", style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-
-        if (viewModel.user?.role.equals("admin", ignoreCase = true)) {
-            item { HorizontalDivider() }
-            item {
-                Text("Admin Beta Invites", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                    OutlinedButton(
-                        onClick = { viewModel.inviteMaxUses = (viewModel.inviteMaxUses - 1).coerceAtLeast(0) },
-                        enabled = !viewModel.isSaving
-                    ) { Text("Uses -") }
-                    Text(if (viewModel.inviteMaxUses == 0) "Unlimited" else "Max ${viewModel.inviteMaxUses}")
-                    OutlinedButton(
-                        onClick = { viewModel.inviteMaxUses = (viewModel.inviteMaxUses + 1).coerceAtMost(100) },
-                        enabled = !viewModel.isSaving
-                    ) { Text("Uses +") }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                    OutlinedButton(
-                        onClick = { viewModel.inviteExpiresDays = (viewModel.inviteExpiresDays - 1).coerceAtLeast(1) },
-                        enabled = !viewModel.isSaving
-                    ) { Text("Days -") }
-                    Text("${viewModel.inviteExpiresDays} day(s)")
-                    OutlinedButton(
-                        onClick = { viewModel.inviteExpiresDays = (viewModel.inviteExpiresDays + 1).coerceAtMost(30) },
-                        enabled = !viewModel.isSaving
-                    ) { Text("Days +") }
-                }
-                OutlinedTextField(
-                    value = viewModel.inviteNote,
-                    onValueChange = { viewModel.inviteNote = it },
-                    label = { Text("Note (optional)") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
-                    enabled = !viewModel.isSaving
+                Text(
+                    name.firstOrNull()?.uppercase() ?: "?",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleLarge
                 )
-                Button(
-                    onClick = { scope.launch { viewModel.createInvite() } },
-                    enabled = !viewModel.isSaving,
-                    modifier = Modifier.padding(top = 8.dp)
-                ) { Text("Create Invite") }
             }
+            Column {
+                Text(name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(email, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (isAdmin) {
+                    Text("Admin", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
+                }
+            }
+        }
+    }
+}
 
-            if (viewModel.betaInvites.isEmpty()) {
-                item { Text("No beta invites yet", style = MaterialTheme.typography.bodyMedium) }
+@Composable
+private fun EditProfileCard(name: String, bio: String, isSaving: Boolean, viewModel: ProfileViewModel) {
+    var editName by remember(name) { mutableStateOf(name) }
+    var editBio by remember(bio) { mutableStateOf(bio) }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Text("Edit profile", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            OutlinedTextField(
+                value = editName,
+                onValueChange = { editName = it },
+                label = { Text("Name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                enabled = !isSaving
+            )
+            OutlinedTextField(
+                value = editBio,
+                onValueChange = { editBio = it },
+                label = { Text("Bio") },
+                minLines = 2,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                enabled = !isSaving
+            )
+            Button(
+                onClick = { viewModel.saveProfile(editName, editBio) {} },
+                enabled = editName.isNotBlank() && !isSaving,
+                modifier = Modifier.padding(top = 8.dp)
+            ) { Text("Save") }
+        }
+    }
+}
+
+@Composable
+private fun StreakCard(current: Int?, longest: Int?) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Text("Streak", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            if (current != null) {
+                Text("🔥 Current: $current days", modifier = Modifier.padding(top = 4.dp))
+                Text("Longest: ${longest ?: 0} days", color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
-                items(viewModel.betaInvites, key = { it.id }) { invite ->
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(invite.code, fontWeight = FontWeight.SemiBold)
-                        val uses = if (invite.maxUses == 0) "${invite.useCount}/unlimited" else "${invite.useCount}/${invite.maxUses}"
-                        Text("Uses: $uses", style = MaterialTheme.typography.bodySmall)
-                        Text("Expires: ${invite.expiresAt}", style = MaterialTheme.typography.bodySmall)
-                        invite.note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                        OutlinedButton(
-                            onClick = { scope.launch { viewModel.deleteInvite(invite.id) } },
-                            enabled = !viewModel.isSaving,
-                            modifier = Modifier.padding(top = 6.dp)
-                        ) { Text("Delete") }
+                Text("No streak data yet", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun GoalsCard(goals: List<GoalDto>) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Goals", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            if (goals.isEmpty()) {
+                Text("No goals set", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                goals.forEach { goal ->
+                    val label = goal.activityType?.let { "${it.icon ?: ""} ${it.name}" } ?: "Any activity"
+                    val period = goal.period.replaceFirstChar { it.titlecase() }
+                    Column {
+                        Text(label, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "$period • ${goal.currentProgress}/${goal.targetCount}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
         }
+    }
+}
 
-        item {
-            viewModel.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+@Composable
+private fun ChangePasswordForm(isSaving: Boolean, onSubmit: (String, String, String) -> Unit) {
+    var current by remember { mutableStateOf("") }
+    var new by remember { mutableStateOf("") }
+    var confirm by remember { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 20.dp, end = 20.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text("Change password", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        PasswordField("Current password", current, isSaving) { current = it }
+        PasswordField("New password", new, isSaving) { new = it }
+        PasswordField("Confirm new password", confirm, isSaving) { confirm = it }
+        Text(
+            "At least 12 characters with upper/lower case, a number, and a special character.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            "You'll be signed out after changing it.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Button(
+            onClick = { onSubmit(current, new, confirm) },
+            enabled = !isSaving && current.isNotBlank() && new.isNotBlank(),
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Change password") }
+    }
+}
+
+@Composable
+private fun PasswordField(label: String, value: String, enabled: Boolean, onChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        label = { Text(label) },
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+        modifier = Modifier.fillMaxWidth(),
+        enabled = enabled
+    )
+}
+
+@Composable
+private fun BetaInvitesForm(
+    invites: List<BetaInviteDto>,
+    isSaving: Boolean,
+    onCreate: (Int, Int, String) -> Unit,
+    onDelete: (String) -> Unit
+) {
+    var maxUses by remember { mutableStateOf(1) }
+    var days by remember { mutableStateOf(7) }
+    var note by remember { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 20.dp, end = 20.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text("Beta invites", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Max uses", modifier = Modifier.weight(1f))
+            OutlinedButton(onClick = { maxUses = (maxUses - 1).coerceAtLeast(0) }, enabled = !isSaving) { Text("−") }
+            Text(if (maxUses == 0) "∞" else "$maxUses")
+            OutlinedButton(onClick = { maxUses = (maxUses + 1).coerceAtMost(100) }, enabled = !isSaving) { Text("+") }
         }
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Expires (days)", modifier = Modifier.weight(1f))
+            OutlinedButton(onClick = { days = (days - 1).coerceAtLeast(1) }, enabled = !isSaving) { Text("−") }
+            Text("$days")
+            OutlinedButton(onClick = { days = (days + 1).coerceAtMost(30) }, enabled = !isSaving) { Text("+") }
+        }
+        OutlinedTextField(
+            value = note,
+            onValueChange = { note = it },
+            label = { Text("Note (optional)") },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isSaving
+        )
+        Button(
+            onClick = { onCreate(maxUses, days, note); note = "" },
+            enabled = !isSaving,
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Create invite") }
 
-        item {
-            OutlinedButton(onClick = { SessionManager.logout() }, enabled = !viewModel.isSaving) {
-                Text("Logout")
+        if (invites.isEmpty()) {
+            Text("No beta invites yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            invites.forEach { invite ->
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                        Text(invite.code, fontWeight = FontWeight.SemiBold)
+                        val uses = if (invite.maxUses == 0) "${invite.useCount}/∞" else "${invite.useCount}/${invite.maxUses}"
+                        Text("Uses: $uses", style = MaterialTheme.typography.bodySmall)
+                        invite.note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                        TextButton(onClick = { onDelete(invite.id) }, enabled = !isSaving) { Text("Delete") }
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun Center(text: String) {
+    Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
+        Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
