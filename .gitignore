@@ -59,6 +59,11 @@ go.work.sum
 .env.local
 .env.*.local
 
+# Android release signing — never commit the keystore or its passwords
+keystore.properties
+*.jks
+*.keystore
+
 # Push credentials (private keys — never commit)
 # Firebase service-account JSON for FCM. google-services.json is NOT listed
 # here on purpose: it belongs to the Android app and is meant to be committed.

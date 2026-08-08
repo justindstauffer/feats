@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -6,9 +8,28 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+// Release signing is read from a gitignored keystore.properties. When it's
+// absent (CI, fresh clones, debug-only work) the release config is simply left
+// unsigned — debug builds and `assembleDebug` never touch this.
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
+}
+
 android {
     namespace = "com.jstauff.feats.android"
     compileSdk = 35
+
+    signingConfigs {
+        create("release") {
+            if (keystorePropsFile.exists()) {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
 
     defaultConfig {
         applicationId = "com.jstauff.feats.android"
@@ -26,11 +47,18 @@ android {
 
     buildTypes {
         release {
+            // R8 left off for now: kotlinx-serialization / Retrofit reflection
+            // need verified keep rules before enabling, so a beta build can't
+            // crash from a stripped serializer. Enable later with a test pass.
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Only sign when the keystore is configured locally.
+            if (keystorePropsFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
         debug {
             applicationIdSuffix = ".debug"
